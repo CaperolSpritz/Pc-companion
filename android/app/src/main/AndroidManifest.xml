@@ -13,6 +13,10 @@
     <!-- Bluetooth runtime permissions for Android 12+ (API 31+ up to Android 17) -->
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
     <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE" />
+    <uses-permission
+        android:name="android.permission.BLUETOOTH_SCAN"
+        android:usesPermissionFlags="neverForLocation"
+        tools:targetApi="s" />
 
     <uses-feature android:name="android.hardware.bluetooth" android:required="true" />
 

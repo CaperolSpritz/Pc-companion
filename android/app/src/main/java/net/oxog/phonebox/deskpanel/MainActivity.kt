@@ -31,10 +31,6 @@ import android.webkit.WebViewClient
 import androidx.webkit.WebViewAssetLoader
 import org.json.JSONObject
 
-/**
- * Full-screen AMOLED Desk Companion for Pixel 6a / Android 9+.
- * Self-contained HTML/CSS/JS UI in assets/www/index.html communicating with PC via Bluetooth HID.
- */
 class MainActivity : Activity(), SensorEventListener {
 
     private lateinit var web: WebView
@@ -216,6 +212,11 @@ class MainActivity : Activity(), SensorEventListener {
         @JavascriptInterface
         fun btRequestPermissions() {
             runOnUiThread { btHid.requestPermissions() }
+        }
+
+        @JavascriptInterface
+        fun btMakeDiscoverable() {
+            runOnUiThread { btHid.makeDiscoverable() }
         }
 
         @JavascriptInterface

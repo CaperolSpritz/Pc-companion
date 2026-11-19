@@ -605,12 +605,19 @@
   <div id="btModal" class="modal-backdrop" onclick="if(event.target===this)closeModals()">
     <div class="modal-card">
       <div class="modal-head">
-        <span>Connessione Bluetooth HID</span>
+        <span>Connessione Bluetooth HID (v1.0.1)</span>
         <button class="close-btn" onclick="closeModals()">Chiudi</button>
       </div>
+      <div id="btDiagBox" style="padding:10px 12px; border-radius:12px; background:rgba(255,255,255,0.04); border:1px solid var(--line); font-size:12px; line-height:1.45;">
+        Caricamento stato HID...
+      </div>
       <div id="btModalBody" class="dev-list"></div>
-      <div style="display:flex; gap:8px; margin-top:4px;">
-        <button class="action-btn" style="flex:1;" onclick="openAndroidBtSettings()">Impostazioni Bluetooth Android</button>
+      <div style="display:flex; flex-direction:column; gap:8px; margin-top:4px;">
+        <button class="action-btn" onclick="makePhoneDiscoverable()">📡 1. Rendi Pixel visibile al PC (5 min)</button>
+        <button class="action-btn" style="background:rgba(255,255,255,0.07); border-color:var(--line);" onclick="openAndroidBtSettings()">⚙️ Impostazioni Bluetooth Android</button>
+      </div>
+      <div style="font-size:11.5px; color:var(--muted); line-height:1.4;">
+        <b>Importante per Windows:</b> Se il Pixel 6a era già associato al PC prima di installare l'app, rimuovilo una volta da Windows e dal Pixel, poi tocca <b>"Rendi Pixel visibile al PC"</b> qui sopra e avvia <i>Aggiungi dispositivo Bluetooth</i> dal PC mentre questa schermata è aperta.
       </div>
     </div>
   </div>
@@ -912,6 +919,20 @@
     }
 
     function populateBtModal() {
+      const diag = document.getElementById('btDiagBox');
+      if (diag) {
+        const regBadge = btState.registered
+          ? '<span style="color:var(--ok);font-weight:700;">● Attivo (Tastiera HID 0x1124)</span>'
+          : '<span style="color:var(--warn);font-weight:700;">● Non registrato</span>';
+        const discBadge = btState.discoverable
+          ? ' · <span style="color:#38bdf8;font-weight:700;">Visibile al PC</span>'
+          : '';
+        diag.innerHTML = `
+          <div>Servizio HID: ${regBadge}${discBadge}</div>
+          <div style="color:var(--muted);margin-top:3px;">${btState.note || ''}</div>
+        `;
+      }
+
       const box = document.getElementById('btModalBody');
       box.innerHTML = '';
 
@@ -919,7 +940,7 @@
         const btn = document.createElement('button');
         btn.className = 'action-btn';
         btn.textContent = 'Concedi Permessi Bluetooth (Android 12+)';
-        btn.onclick = () => { A.btRequestPermissions(); closeModals(); };
+        btn.onclick = () => { A.btRequestPermissions(); };
         box.appendChild(btn);
         return;
       }
@@ -927,9 +948,9 @@
       const list = btState.bondedDevices || [];
       if (!list.length) {
         const msg = document.createElement('div');
-        msg.style.fontSize = '13px';
+        msg.style.fontSize = '12.5px';
         msg.style.color = 'var(--muted)';
-        msg.textContent = 'Nessun dispositivo associato trovato. Associa prima il PC dalle Impostazioni Bluetooth di Android.';
+        msg.textContent = 'Nessun PC associato. Tocca "Rendi Pixel visibile al PC" qui sotto e poi cerca il Pixel dal menu Bluetooth del PC Windows.';
         box.appendChild(msg);
         return;
       }
@@ -943,7 +964,7 @@
             <div style="font-size:11.5px; color:var(--muted);">${d.address}</div>
           </div>
           <span style="font-size:12px; font-weight:600; color:${d.connected ? 'var(--ok)' : 'rgb(var(--accent))'};">
-            ${d.connected ? 'Connesso (Disconnetti)' : 'Connetti'}
+            ${d.connected ? 'Connesso (Disconnetti)' : 'Connetti HID'}
           </span>
         `;
         row.onclick = () => {
@@ -954,6 +975,11 @@
         };
         box.appendChild(row);
       });
+    }
+
+    function makePhoneDiscoverable() {
+      haptic();
+      if (A && A.btMakeDiscoverable) A.btMakeDiscoverable();
     }
 
     function openAndroidBtSettings() {
