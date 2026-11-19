@@ -1,16 +1,19 @@
 <#
 .SYNOPSIS
-    PC-Companion Bridge (v1.1.0) - Script PowerShell user-space per Pixel 6a
+    PC-Companion Bridge (v1.2.0) - Script PowerShell user-space per Pixel 6a
     Comunica bidirezionalmente via Bluetooth RFCOMM nativo (Winsock AF_BTH)
-    Zero ADB, Zero privilegi di amministratore, Zero porte firewall, Zero .exe esterni.
+    Supporta:
+      - Telemetria Hardware & Task Manager (Cat. A)
+      - Mixer Audio per App & Now Playing Live con auto-hide (Cat. B)
+      - Gestione Finestre, Doppio Monitor (Interno WMI + Esterno DDC/CI) e Power (Cat. D)
 #>
 
 $ErrorActionPreference = 'SilentlyContinue'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-$Host.UI.RawUI.WindowTitle = "PC-Companion Bridge v1.1.0 (Bluetooth RFCOMM)"
+$Host.UI.RawUI.WindowTitle = "PC-Companion Bridge v1.2.0 (Bluetooth RFCOMM)"
 
 Write-Host "================================================================" -ForegroundColor Cyan
-Write-Host "   PC-COMPANION BRIDGE v1.1.0 - Telemetria, Mixer & Finestre    " -ForegroundColor Cyan
+Write-Host "   PC-COMPANION BRIDGE v1.2.0 - Telemetria, Mixer & 2 Monitor   " -ForegroundColor Cyan
 Write-Host "   Connessione diretta Bluetooth RFCOMM (Zero ADB / Zero Admin) " -ForegroundColor Gray
 Write-Host "================================================================" -ForegroundColor Cyan
 Write-Host ""
@@ -189,11 +192,12 @@ public class PcCompanionNative {
         public string name;
         public int vol;
         public bool muted;
+        public int state; // 0 = Inactive, 1 = Active, 2 = Expired
     }
 
     public static List<AppAudioInfo> GetAudioSessions() {
         var list = new List<AppAudioInfo>();
-        var seenPids = new HashSet<int>();
+        var byPid = new Dictionary<int, AppAudioInfo>();
         try {
             var dev = GetDefaultRenderDevice();
             Guid iidMgr = typeof(IAudioSessionManager2).GUID;
@@ -207,8 +211,11 @@ public class PcCompanionNative {
                 IAudioSessionControl2 ctl;
                 se.GetSession(i, out ctl);
                 if (ctl == null) continue;
+                int st = 0;
+                ctl.GetState(out st);
+                if (st == 2) continue; // Ignore expired sessions
                 uint pid; ctl.GetProcessId(out pid);
-                if (pid == 0 || seenPids.Contains((int)pid)) continue;
+                if (pid == 0) continue;
                 var sav = ctl as ISimpleAudioVolume;
                 if (sav == null) continue;
                 float v; sav.GetMasterVolume(out v);
@@ -216,16 +223,25 @@ public class PcCompanionNative {
                 string pName = null;
                 try {
                     var p = Process.GetProcessById((int)pid);
+                    if (p.HasExited) continue;
                     pName = p.ProcessName;
                 } catch { continue; }
                 if (string.IsNullOrEmpty(pName)) continue;
-                seenPids.Add((int)pid);
-                list.Add(new AppAudioInfo {
-                    pid = (int)pid,
-                    name = pName,
-                    vol = (int)Math.Round(v * 100f),
-                    muted = m
-                });
+
+                int ipid = (int)pid;
+                if (byPid.ContainsKey(ipid)) {
+                    if (st == 1) byPid[ipid].state = 1;
+                } else {
+                    var info = new AppAudioInfo {
+                        pid = ipid,
+                        name = pName,
+                        vol = (int)Math.Round(v * 100f),
+                        muted = m,
+                        state = st
+                    };
+                    byPid[ipid] = info;
+                    list.Add(info);
+                }
             }
         } catch { }
         return list;
@@ -256,6 +272,95 @@ public class PcCompanionNative {
                 }
             }
         } catch { }
+    }
+
+    // --- DDC/CI External Monitor Brightness (dxva2.dll VCP 0x10) ---
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
+    public struct PHYSICAL_MONITOR {
+        public IntPtr hPhysicalMonitor;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)]
+        public string szPhysicalMonitorDescription;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct POINT {
+        public int x, y;
+    }
+
+    [DllImport("user32.dll")] public static extern IntPtr MonitorFromPoint(POINT pt, uint dwFlags);
+    [DllImport("dxva2.dll", SetLastError = true)] public static extern bool GetNumberOfPhysicalMonitorsFromHMONITOR(IntPtr hMonitor, out uint pdwNumberOfPhysicalMonitors);
+    [DllImport("dxva2.dll", SetLastError = true, CharSet = CharSet.Auto)] public static extern bool GetPhysicalMonitorsFromHMONITOR(IntPtr hMonitor, uint dwPhysicalMonitorArraySize, [Out] PHYSICAL_MONITOR[] pPhysicalMonitorArray);
+    [DllImport("dxva2.dll", SetLastError = true)] public static extern bool GetVCPFeatureAndVCPFeatureReply(IntPtr hMonitor, byte bVCPCode, IntPtr pvct, out uint pdwCurrentValue, out uint pdwMaximumValue);
+    [DllImport("dxva2.dll", SetLastError = true)] public static extern bool SetVCPFeature(IntPtr hMonitor, byte bVCPCode, uint dwNewValue);
+    [DllImport("dxva2.dll", SetLastError = true)] public static extern bool DestroyPhysicalMonitors(uint dwPhysicalMonitorArraySize, [In] PHYSICAL_MONITOR[] pPhysicalMonitorArray);
+
+    private static IntPtr cachedExtHandle = IntPtr.Zero;
+    public static string cachedExtName = "Monitor Esterno (Docking)";
+
+    private static IntPtr EnsureExternalMonitorHandle() {
+        if (cachedExtHandle != IntPtr.Zero) return cachedExtHandle;
+        int[][] testPoints = new int[][] {
+            new int[] { 0, 0 },
+            new int[] { 2500, 0 },
+            new int[] { -1500, 0 },
+            new int[] { 0, -1000 }
+        };
+        var seenHMon = new HashSet<long>();
+        foreach (var pt in testPoints) {
+            IntPtr hMon = MonitorFromPoint(new POINT { x = pt[0], y = pt[1] }, 2);
+            if (hMon == IntPtr.Zero || seenHMon.Contains(hMon.ToInt64())) continue;
+            seenHMon.Add(hMon.ToInt64());
+            uint count = 0;
+            if (GetNumberOfPhysicalMonitorsFromHMONITOR(hMon, out count) && count > 0) {
+                var arr = new PHYSICAL_MONITOR[count];
+                if (GetPhysicalMonitorsFromHMONITOR(hMon, count, arr)) {
+                    for (int i = 0; i < count; i++) {
+                        string desc = arr[i].szPhysicalMonitorDescription ?? "";
+                        if (desc.IndexOf("Generic PnP", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                            desc.IndexOf("Monitor generico", StringComparison.OrdinalIgnoreCase) >= 0) {
+                            DestroyPhysicalMonitors(1, new PHYSICAL_MONITOR[] { arr[i] });
+                            continue;
+                        }
+                        cachedExtHandle = arr[i].hPhysicalMonitor;
+                        if (!string.IsNullOrEmpty(desc)) cachedExtName = desc;
+                        return cachedExtHandle;
+                    }
+                }
+            }
+        }
+        return IntPtr.Zero;
+    }
+
+    public static int ReadExternalBrightness() {
+        try {
+            IntPtr h = EnsureExternalMonitorHandle();
+            if (h == IntPtr.Zero) return -1;
+            for (int attempt = 0; attempt < 2; attempt++) {
+                uint cur = 0, max = 0;
+                if (GetVCPFeatureAndVCPFeatureReply(h, 0x10, IntPtr.Zero, out cur, out max) && max > 0) {
+                    return (int)cur;
+                }
+                System.Threading.Thread.Sleep(50);
+            }
+        } catch {
+            cachedExtHandle = IntPtr.Zero;
+        }
+        return -1;
+    }
+
+    public static bool WriteExternalBrightness(int val) {
+        try {
+            IntPtr h = EnsureExternalMonitorHandle();
+            if (h == IntPtr.Zero) return false;
+            uint target = (uint)Math.Max(0, Math.Min(100, val));
+            for (int attempt = 0; attempt < 2; attempt++) {
+                if (SetVCPFeature(h, 0x10, target)) return true;
+                System.Threading.Thread.Sleep(40);
+            }
+        } catch {
+            cachedExtHandle = IntPtr.Zero;
+        }
+        return false;
     }
 
     // --- User32 Window & System Management ---
@@ -327,11 +432,14 @@ public class PcCompanionNative {
 
 Add-Type -TypeDefinition $csCode -Language CSharp
 
-# UUID del servizio Bluetooth RFCOMM esposto da PC-Companion sul Pixel 6a
 $SERVICE_UUID = [Guid]::Parse("8ce255c0-200a-11e0-ac64-0800200c9a66")
 
+$script:cachedDisks = @()
+$script:lastDiskTick = 0
+$script:cachedExtBrightness = -1
+$script:lastExtBrightTick = 0
+
 function Find-PixelBluetoothAddress {
-    # 1. Cerca dispositivo Bluetooth associato chiamato PC-Companion, Pixel 6a o Android-8182
     $btDevs = Get-CimInstance Win32_PnPEntity | Where-Object {
         $_.PNPClass -eq 'Bluetooth' -and $_.DeviceID -match 'BTHENUM\\DEV_([0-9A-F]{12})'
     }
@@ -344,7 +452,6 @@ function Find-PixelBluetoothAddress {
             }
         }
     }
-    # Fallback al MAC noto del Pixel 6a (F8:1A:2B:FB:F3:CA)
     Write-Host "[INFO] Uso indirizzo Bluetooth predefinito del Pixel 6a (F8:1A:2B:FB:F3:CA)" -ForegroundColor Yellow
     return [uint64]0x0000F81A2BFBF3CA
 }
@@ -378,21 +485,28 @@ function Handle-PhoneCommand([string]$jsonLine) {
             }
             'snapWindow' {
                 switch ($cmdObj.action) {
-                    'left'     { [PcCompanionNative]::SendWinShortcut(0x25, $false) } # Win + Left
-                    'right'    { [PcCompanionNative]::SendWinShortcut(0x27, $false) } # Win + Right
-                    'max'      { [PcCompanionNative]::SendWinShortcut(0x26, $false) } # Win + Up
-                    'min'      { [PcCompanionNative]::SendWinShortcut(0x28, $false) } # Win + Down
-                    'desktop'  { [PcCompanionNative]::SendWinShortcut(0x44, $false) } # Win + D
-                    'taskview' { [PcCompanionNative]::SendWinShortcut(0x09, $false) } # Win + Tab
-                    'vprev'    { [PcCompanionNative]::SendWinShortcut(0x25, $true)  } # Ctrl + Win + Left
-                    'vnext'    { [PcCompanionNative]::SendWinShortcut(0x27, $true)  } # Ctrl + Win + Right
+                    'left'     { [PcCompanionNative]::SendWinShortcut(0x25, $false) }
+                    'right'    { [PcCompanionNative]::SendWinShortcut(0x27, $false) }
+                    'max'      { [PcCompanionNative]::SendWinShortcut(0x26, $false) }
+                    'min'      { [PcCompanionNative]::SendWinShortcut(0x28, $false) }
+                    'desktop'  { [PcCompanionNative]::SendWinShortcut(0x44, $false) }
+                    'taskview' { [PcCompanionNative]::SendWinShortcut(0x09, $false) }
+                    'vprev'    { [PcCompanionNative]::SendWinShortcut(0x25, $true)  }
+                    'vnext'    { [PcCompanionNative]::SendWinShortcut(0x27, $true)  }
                 }
             }
             'setBrightness' {
                 $bVal = [int]$cmdObj.value
-                $mon = Get-CimInstance -Namespace root\wmi -ClassName WmiMonitorBrightnessMethods -ErrorAction SilentlyContinue
-                if ($mon) {
-                    Invoke-CimMethod -InputObject $mon -MethodName WmiSetBrightness -Arguments @{Timeout=1; Brightness=$bVal} | Out-Null
+                $targetMon = if ($cmdObj.monitor) { [string]$cmdObj.monitor } else { 'internal' }
+                if ($targetMon -eq 'external') {
+                    if ([PcCompanionNative]::WriteExternalBrightness($bVal)) {
+                        $script:cachedExtBrightness = $bVal
+                    }
+                } else {
+                    $mon = Get-CimInstance -Namespace root\wmi -ClassName WmiMonitorBrightnessMethods -ErrorAction SilentlyContinue
+                    if ($mon) {
+                        Invoke-CimMethod -InputObject $mon -MethodName WmiSetBrightness -Arguments @{Timeout=1; Brightness=$bVal} | Out-Null
+                    }
                 }
             }
             'setPowerPlan' {
@@ -421,12 +535,6 @@ function Handle-PhoneCommand([string]$jsonLine) {
     }
 }
 
-$script:lastNetRx = 0
-$script:lastNetTx = 0
-$script:lastNetTime = [DateTime]::UtcNow
-$script:cachedDisks = @()
-$script:lastDiskTick = 0
-
 function Build-TelemetryJson {
     # 1. CPU & RAM
     $os = Get-CimInstance Win32_OperatingSystem
@@ -440,7 +548,6 @@ function Build-TelemetryJson {
     $ramUsedGb  = [math]::Round($usedMb / 1024, 1)
     $ramTotalGb = [math]::Round($totalMb / 1024, 1)
 
-    # Uptime
     $upSpan = (Get-Date) - $os.LastBootUpTime
     $uptimeStr = "{0}g {1}h {2}m" -f $upSpan.Days, $upSpan.Hours, $upSpan.Minutes
 
@@ -454,7 +561,7 @@ function Build-TelemetryJson {
         }
     } catch {}
 
-    # Dischi (aggiornati ogni 10 cicli per leggerezza)
+    # Dischi (aggiornati ogni 10 cicli)
     if ($script:lastDiskTick % 10 -eq 0) {
         $script:cachedDisks = @(Get-CimInstance Win32_LogicalDisk -Filter "DriveType=3" | ForEach-Object {
             $tot = [math]::Round($_.Size / 1GB, 0)
@@ -479,11 +586,23 @@ function Build-TelemetryJson {
     # CoreAudio Master & Sessioni per singola App
     $vol = 50; $muted = $false; $peak = 0
     [PcCompanionNative]::GetMasterAudio([ref]$vol, [ref]$muted, [ref]$peak)
-    $apps = @([PcCompanionNative]::GetAudioSessions() | ForEach-Object {
+    $sessionsRaw = [PcCompanionNative]::GetAudioSessions()
+    $apps = @($sessionsRaw | ForEach-Object {
         @{ pid = $_.pid; name = $_.name; vol = $_.vol; muted = $_.muted }
     })
 
-    # Finestre Desktop & Rilevamento Brano Multimediale
+    # Insieme dei processi che stanno effettivamente riproducendo audio (state == 1)
+    # o player multimediali dedicati con sessione aperta
+    $activeAudioProcs = @{}
+    foreach ($s in $sessionsRaw) {
+        if ($s.state -eq 1) {
+            $activeAudioProcs[$s.name.ToLower()] = $true
+        } elseif ($s.name -match '^(Spotify|vlc|Music\.UI|foobar2000|wmplayer|AIMP)$') {
+            $activeAudioProcs[$s.name.ToLower()] = $true
+        }
+    }
+
+    # Finestre Desktop & Rilevamento Brano Multimediale (solo se il processo ha una sessione audio attiva!)
     $winsRaw = [PcCompanionNative]::GetOpenWindows()
     $windows = @($winsRaw | ForEach-Object {
         @{ hwnd = $_.hwnd; title = $_.title; proc = $_.proc }
@@ -492,42 +611,53 @@ function Build-TelemetryJson {
     $mediaTitle = ""
     $mediaApp = ""
     foreach ($w in $winsRaw) {
-        if ($w.proc -match 'Spotify|vlc|msedge|chrome|firefox|Music') {
-            if ($w.title -match ' - ') {
-                $mediaTitle = $w.title
+        $pLower = ($w.proc + "").ToLower()
+        if ($activeAudioProcs.ContainsKey($pLower)) {
+            $cleanTitle = $w.title -replace '\s*-\s*(Google Chrome|Microsoft\u200B?\s*Edge|Mozilla Firefox|VLC media player|Brave|Opera)$', ''
+            if ($cleanTitle -and $cleanTitle -ne $w.proc -and $cleanTitle -ne 'Spotify Free' -and $cleanTitle -ne 'Spotify Premium' -and $cleanTitle -ne 'Spotify') {
+                $mediaTitle = $cleanTitle
                 $mediaApp = $w.proc
                 break
             }
         }
     }
 
-    # Luminosità monitor (se supportata via WMI)
-    $bright = -1
+    # 1. Luminosità Monitor Interno Portatile (WMI)
+    $brightInt = -1
     try {
         $bObj = Get-CimInstance -Namespace root\wmi -ClassName WmiMonitorBrightness -ErrorAction SilentlyContinue
-        if ($bObj) { $bright = [int]$bObj.CurrentBrightness }
+        if ($bObj) { $brightInt = [int]$bObj.CurrentBrightness }
     } catch {}
 
+    # 2. Luminosità Monitor Esterno Docking (letta una volta all'avvio e aggiornata in tempo reale dallo slider)
+    if ($script:lastExtBrightTick -eq 0) {
+        $readExt = [PcCompanionNative]::ReadExternalBrightness()
+        if ($readExt -ge 0) { $script:cachedExtBrightness = $readExt } else { $script:cachedExtBrightness = 90 }
+    }
+    $script:lastExtBrightTick++
+
     $payload = @{
-        host       = $env:COMPUTERNAME
-        cpu        = [int]$cpuLoad
-        ramPct     = [int]$ramPct
-        ramUsedGb  = $ramUsedGb
-        ramTotalGb = $ramTotalGb
-        gpu        = [int]([math]::Min(100, [math]::Round($cpuLoad * 0.65, 0)))
-        uptime     = $uptimeStr
-        netDownKbs = $netDownKbs
-        netUpKbs   = $netUpKbs
-        disks      = $script:cachedDisks
-        procs      = $procs
-        vol        = $vol
-        muted      = $muted
-        peak       = $peak
-        mediaTitle = $mediaTitle
-        mediaApp   = $mediaApp
-        apps       = $apps
-        windows    = $windows
-        brightness = $bright
+        host           = $env:COMPUTERNAME
+        cpu            = [int]$cpuLoad
+        ramPct         = [int]$ramPct
+        ramUsedGb      = $ramUsedGb
+        ramTotalGb     = $ramTotalGb
+        gpu            = [int]([math]::Min(100, [math]::Round($cpuLoad * 0.65, 0)))
+        uptime         = $uptimeStr
+        netDownKbs     = $netDownKbs
+        netUpKbs       = $netUpKbs
+        disks          = $script:cachedDisks
+        procs          = $procs
+        vol            = $vol
+        muted          = $muted
+        peak           = $peak
+        mediaTitle     = $mediaTitle
+        mediaApp       = $mediaApp
+        apps           = $apps
+        windows        = $windows
+        brightnessInt  = $brightInt
+        brightnessExt  = $script:cachedExtBrightness
+        extMonitorName = [PcCompanionNative]::cachedExtName
     }
 
     return ($payload | ConvertTo-Json -Depth 4 -Compress)
@@ -545,14 +675,12 @@ while ($true) {
         $writer.AutoFlush = $true
         $reader = New-Object System.IO.StreamReader($stream, [System.Text.Encoding]::UTF8)
 
-        Write-Host "[CONNESSO] Streaming telemetria, mixer audio e finestre attivo verso il Pixel 6a!" -ForegroundColor Green
+        Write-Host "[CONNESSO] Streaming telemetria, mixer audio e doppio monitor attivo verso il Pixel 6a!" -ForegroundColor Green
 
         while ($sock.Connected) {
-            # 1. Invia pacchetto JSON di stato al Pixel 6a
             $json = Build-TelemetryJson
             $writer.WriteLine($json)
 
-            # 2. Controlla per 1000ms (in step da 100ms) se il telefono ha inviato comandi
             for ($i = 0; $i -lt 10; $i++) {
                 if ($sock.Poll(1000, [System.Net.Sockets.SelectMode]::SelectRead)) {
                     if ($sock.Available -eq 0) {

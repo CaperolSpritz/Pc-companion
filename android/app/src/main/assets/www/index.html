@@ -61,6 +61,7 @@
       color: var(--text);
       font-family: Roboto, "Segoe UI", system-ui, sans-serif;
       font-variant-numeric: tabular-nums;
+      touch-action: pan-y;
     }
 
     body[data-theme="default"]::before,
@@ -153,7 +154,7 @@
       letter-spacing: 0.04em;
     }
 
-    /* --- Top Header: Pills & Page Tabs --- */
+    /* --- Top Header: Status Pills + Rotation Control + Page Dots --- */
     .header-bar {
       display: flex;
       align-items: center;
@@ -179,11 +180,16 @@
       font-size: 11.5px;
       color: var(--muted);
       white-space: nowrap;
-      transition: transform 0.12s ease, background 0.2s ease;
+      transition: transform 0.12s ease, background 0.2s ease, border-color 0.2s ease;
     }
     .pill-btn:active {
       transform: scale(0.95);
       background: var(--card-hi);
+    }
+    .pill-btn.rot-active {
+      color: #ffffff;
+      border-color: rgba(var(--accent), 0.5);
+      background: rgba(var(--accent), 0.15);
     }
 
     .dot {
@@ -206,36 +212,39 @@
       background: var(--err);
     }
 
-    .nav-tabs {
+    .right-header-group {
       display: flex;
       align-items: center;
-      gap: 5px;
-      background: rgba(255, 255, 255, 0.03);
-      padding: 3px;
-      border-radius: 12px;
-      border: 1px solid var(--line);
+      gap: 10px;
       flex-shrink: 0;
     }
-    .nav-tab {
-      padding: 5px 10px;
-      border-radius: 9px;
-      font-size: 11.5px;
-      font-weight: 600;
-      color: var(--muted);
-      transition: background 0.18s ease, color 0.18s ease;
-      white-space: nowrap;
+    .page-dots {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 8px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.025);
+      border: 1px solid var(--line);
     }
-    .nav-tab.active {
-      background: rgba(var(--accent), 0.2);
-      color: #ffffff;
-      box-shadow: inset 0 0 0 1px rgba(var(--accent), 0.45);
+    .p-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.22);
+      transition: width 0.25s ease, background 0.25s ease;
+    }
+    .p-dot.active {
+      width: 18px;
+      background: rgb(var(--accent));
     }
 
-    /* --- Pages Container --- */
+    /* --- Pages Container (Swipeable) --- */
     .pages-wrap {
       flex: 1;
       min-height: 0;
       position: relative;
+      overflow: hidden;
     }
     .page-view {
       position: absolute;
@@ -244,6 +253,11 @@
       grid-template-columns: 5fr 6fr;
       gap: 14px;
       min-height: 0;
+      animation: fadeSlide 0.22s ease-out;
+    }
+    @keyframes fadeSlide {
+      from { opacity: 0.45; transform: scale(0.99); }
+      to   { opacity: 1; transform: scale(1); }
     }
     .page-view.active {
       display: grid;
@@ -252,7 +266,7 @@
     .col-pane {
       display: flex;
       flex-direction: column;
-      gap: 9px;
+      gap: 8px;
       min-width: 0;
       min-height: 0;
       height: 100%;
@@ -278,7 +292,7 @@
       margin-bottom: 6px;
     }
 
-    /* --- PAGE 1: HOME & MEDIA --- */
+    /* --- PAGE 0: HOME & MEDIA --- */
     .clock-wrap {
       margin: auto 0;
       padding: 2px 0;
@@ -287,7 +301,7 @@
       display: flex;
       align-items: flex-start;
       font-weight: 200;
-      font-size: clamp(50px, 12vw, 98px);
+      font-size: clamp(52px, 12.8vw, 104px);
       line-height: 0.92;
       letter-spacing: -0.04em;
       margin-left: -0.03em;
@@ -308,36 +322,41 @@
     .date-line {
       font-size: clamp(13px, 2vw, 18px);
       color: #c9d1db;
-      margin-top: 4px;
+      margin-top: 5px;
       text-transform: capitalize;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
     }
 
+    /* Banner Now Playing: posizionato tra la griglia media e lo slider volume, nascosto se non c'è audio attivo */
     .now-playing-bar {
-      display: flex;
+      display: none;
       align-items: center;
       justify-content: space-between;
       gap: 10px;
-      padding: 8px 12px;
-      border-radius: 14px;
-      background: linear-gradient(90deg, rgba(var(--accent), 0.12), rgba(255, 255, 255, 0.03));
-      border: 1px solid rgba(var(--accent), 0.28);
+      padding: 7px 11px;
+      border-radius: 13px;
+      background: linear-gradient(90deg, rgba(var(--accent), 0.15), rgba(255, 255, 255, 0.03));
+      border: 1px solid rgba(var(--accent), 0.34);
+      flex-shrink: 0;
+    }
+    .now-playing-bar.visible {
+      display: flex;
     }
     .np-meta {
       min-width: 0;
       flex: 1;
     }
     .np-title {
-      font-size: 13px;
+      font-size: 12.5px;
       font-weight: 600;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
     }
     .np-sub {
-      font-size: 11px;
+      font-size: 10.5px;
       color: var(--muted);
       white-space: nowrap;
       overflow: hidden;
@@ -404,7 +423,7 @@
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
       grid-template-rows: repeat(2, minmax(0, 1fr));
-      gap: 9px;
+      gap: 8px;
       min-height: 0;
     }
     .hid-key {
@@ -413,7 +432,7 @@
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      gap: 6px;
+      gap: 5px;
       border-radius: 16px;
       background: linear-gradient(160deg, rgba(var(--k, 255, 255, 255), 0.12), rgba(255, 255, 255, 0.02));
       border: 1px solid rgba(var(--k, 255, 255, 255), 0.22);
@@ -430,12 +449,12 @@
       border-color: rgba(45, 212, 191, 0.42);
     }
     .hid-key svg {
-      width: clamp(22px, 3.8vw, 32px);
-      height: clamp(22px, 3.8vw, 32px);
+      width: clamp(22px, 3.6vw, 30px);
+      height: clamp(22px, 3.6vw, 30px);
       fill: currentColor;
     }
     .hid-key span {
-      font-size: clamp(11px, 1.5vw, 13px);
+      font-size: clamp(11px, 1.45vw, 13px);
       font-weight: 500;
     }
 
@@ -444,10 +463,11 @@
       display: flex;
       align-items: center;
       gap: 10px;
-      padding: 8px 12px;
-      border-radius: 14px;
+      padding: 7px 12px;
+      border-radius: 13px;
       background: var(--card);
       border: 1px solid var(--line);
+      flex-shrink: 0;
     }
     .range-slider {
       -webkit-appearance: none;
@@ -457,6 +477,7 @@
       border-radius: 999px;
       background: rgba(255, 255, 255, 0.14);
       outline: none;
+      touch-action: none;
     }
     .range-slider::-webkit-slider-thumb {
       -webkit-appearance: none;
@@ -468,7 +489,7 @@
       cursor: pointer;
     }
 
-    /* --- PAGE 2: HARDWARE & TASK MANAGER (CAT. A) --- */
+    /* --- PAGE 1: HARDWARE & TASK MANAGER (CAT. A) --- */
     .hw-gauges {
       display: grid;
       grid-template-columns: repeat(3, 1fr);
@@ -579,7 +600,7 @@
       color: #ffffff;
     }
 
-    /* --- PAGE 3: AUDIO MIXER & SPECTRUM (CAT. B) --- */
+    /* --- PAGE 2: AUDIO MIXER & SPECTRUM (CAT. B) --- */
     .spectrum-box {
       height: 68px;
       display: flex;
@@ -617,23 +638,23 @@
       font-size: 12px;
     }
 
-    /* --- PAGE 4: WINDOWS, DISPLAY & POWER (CAT. D) --- */
+    /* --- PAGE 3: WINDOWS, DUAL MONITOR BRIGHTNESS & POWER (CAT. D) --- */
     .snap-grid {
       display: grid;
       grid-template-columns: repeat(4, 1fr);
-      gap: 6px;
+      gap: 5px;
     }
     .snap-btn {
-      padding: 8px 6px;
-      border-radius: 11px;
+      padding: 6px 4px;
+      border-radius: 10px;
       background: rgba(255, 255, 255, 0.045);
       border: 1px solid var(--line);
-      font-size: 11px;
+      font-size: 10.5px;
       font-weight: 600;
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 3px;
+      gap: 2px;
     }
     .snap-btn:active {
       transform: scale(0.95);
@@ -643,7 +664,21 @@
     .power-grid {
       display: grid;
       grid-template-columns: repeat(5, 1fr);
-      gap: 6px;
+      gap: 5px;
+    }
+
+    .mon-row {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      margin-bottom: 7px;
+    }
+    .mon-label-line {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 11px;
+      color: #d1d5db;
     }
 
     /* --- Modals --- */
@@ -765,7 +800,7 @@
   <!-- Contenitore Principale Soggetto a Pixel Shift Orbitale -->
   <div id="appShell">
 
-    <!-- BARRA SUPERIORE: STATO & TAB DI NAVIGAZIONE -->
+    <!-- BARRA SUPERIORE: STATO A SINISTRA, ROTAZIONE & PALLINI PAGINA A DESTRA -->
     <header class="header-bar">
       <div class="status-pills">
         <button id="btPill" class="pill-btn" onclick="openBtModal()">
@@ -785,16 +820,25 @@
         </button>
       </div>
 
-      <nav class="nav-tabs">
-        <button class="nav-tab active" onclick="switchPage(0)">🏠 Home</button>
-        <button class="nav-tab" onclick="switchPage(1)">📊 Hardware</button>
-        <button class="nav-tab" onclick="switchPage(2)">🎚️ Mixer</button>
-        <button class="nav-tab" onclick="switchPage(3)">🪟 Finestre</button>
-      </nav>
+      <div class="right-header-group">
+        <!-- Pulsante Rotazione Automatica Schermate (30s / 1m / 5m / Mai) -->
+        <button id="rotBtn" class="pill-btn" onclick="cycleRotationSetting()">
+          <span>🔄</span>
+          <span id="rotLabel">Rotazione: Mai</span>
+        </button>
+
+        <!-- Indicatori pagina (Swipe a destra/sinistra per cambiare schermata) -->
+        <div class="page-dots" title="Scorri a destra o sinistra per cambiare pagina">
+          <span class="p-dot active" onclick="switchPage(0)"></span>
+          <span class="p-dot" onclick="switchPage(1)"></span>
+          <span class="p-dot" onclick="switchPage(2)"></span>
+          <span class="p-dot" onclick="switchPage(3)"></span>
+        </div>
+      </div>
     </header>
 
-    <!-- CONTENITORE DELLE 4 PAGINE -->
-    <div class="pages-wrap">
+    <!-- CONTENITORE DELLE 4 PAGINE (SWIPE ORIZZONTALE) -->
+    <div id="pagesWrap" class="pages-wrap">
 
       <!-- ================= PAGINA 0: HOME & MEDIA ================= -->
       <section class="page-view active" id="page0">
@@ -805,14 +849,6 @@
               <span id="ss" class="sec">00</span>
             </div>
             <div id="dateStr" class="date-line">caricamento...</div>
-          </div>
-
-          <div class="now-playing-bar" onclick="switchPage(2)">
-            <div class="np-meta">
-              <div id="homeNpTitle" class="np-title">🎵 Nessun brano rilevato dal Bridge</div>
-              <div id="homeNpSub" class="np-sub">I tasti multimediali Bluetooth HID sono sempre attivi</div>
-            </div>
-            <span id="homeCpuBadge" style="font-size:11px; color:rgb(var(--accent)); font-weight:700; white-space:nowrap;">PC --%</span>
           </div>
 
           <div class="wx-card" onclick="openWxModal()">
@@ -832,8 +868,8 @@
 
         <div class="col-pane">
           <div class="sec-head" style="margin-bottom:0;">
-            <span>Controlli Media &amp; Volume (Bluetooth HID + Bridge)</span>
-            <span id="hidFeedback" style="color:rgb(var(--accent));">Pronto</span>
+            <span>Controlli Media &amp; Volume</span>
+            <span id="hidFeedback" style="color:rgb(var(--accent));">Scorri ⇆ per le altre schede</span>
           </div>
 
           <div class="media-grid">
@@ -870,6 +906,15 @@
               <svg class="sub-shift" viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>
               <span>Volume +</span>
             </button>
+          </div>
+
+          <!-- Banner Now Playing Live: posizionato tra i comandi multimediali e lo slider del volume. Sparisce se non c'è nulla in riproduzione -->
+          <div id="nowPlayingBar" class="now-playing-bar" onclick="switchPage(2)">
+            <div class="np-meta">
+              <div id="homeNpTitle" class="np-title"></div>
+              <div id="homeNpSub" class="np-sub"></div>
+            </div>
+            <span style="font-size:11px; color:rgb(var(--accent)); font-weight:700; white-space:nowrap;">🎚️ Mixer</span>
           </div>
 
           <div class="vol-strip">
@@ -985,7 +1030,7 @@
         </div>
       </section>
 
-      <!-- ================= PAGINA 3: FINESTRE, MONITOR & ALIMENTAZIONE (CAT. D) ================= -->
+      <!-- ================= PAGINA 3: FINESTRE, DOPPIO MONITOR & ALIMENTAZIONE (CAT. D) ================= -->
       <section class="page-view" id="page3">
         <div class="col-pane">
           <div class="card-box">
@@ -1006,14 +1051,32 @@
 
           <div class="card-box">
             <div class="sec-head">
-              <span>Luminosità Monitor PC &amp; Profilo Alimentazione</span>
-              <span id="pcBrightLbl">--%</span>
+              <span>Luminosità Doppio Monitor &amp; Alimentazione</span>
             </div>
-            <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
-              <span style="font-size:12px;">🔆</span>
-              <input id="pcBrightSlider" class="range-slider" type="range" min="0" max="100" value="80" onchange="sendBridge({cmd:'setBrightness', value:Number(this.value)})" oninput="document.getElementById('pcBrightLbl').textContent=this.value+'%'" />
+
+            <!-- Slider 1: Monitor Interno del Portatile -->
+            <div class="mon-row">
+              <div class="mon-label-line">
+                <span>💻 Display Portatile (Interno)</span>
+                <b id="intBrightLbl">--%</b>
+              </div>
+              <input id="intBrightSlider" class="range-slider" type="range" min="0" max="100" value="80"
+                oninput="document.getElementById('intBrightLbl').textContent=this.value+'%'"
+                onchange="sendBridge({cmd:'setBrightness', monitor:'internal', value:Number(this.value)})" />
             </div>
-            <div style="display:flex; gap:6px;">
+
+            <!-- Slider 2: Monitor Esterno collegato via Docking Station (DDC/CI) -->
+            <div class="mon-row">
+              <div class="mon-label-line">
+                <span id="extMonTitle">🖥️ Monitor Esterno (Docking)</span>
+                <b id="extBrightLbl">--%</b>
+              </div>
+              <input id="extBrightSlider" class="range-slider" type="range" min="0" max="100" value="90"
+                oninput="document.getElementById('extBrightLbl').textContent=this.value+'%'"
+                onchange="sendBridge({cmd:'setBrightness', monitor:'external', value:Number(this.value)})" />
+            </div>
+
+            <div style="display:flex; gap:6px; margin-top:4px;">
               <button id="planSaver" class="mini-btn" style="flex:1;" onclick="setPowerPlan('saver')">🌱 Risparmio</button>
               <button id="planBal" class="mini-btn accent" style="flex:1;" onclick="setPowerPlan('balanced')">⚖️ Bilanciato</button>
               <button id="planHigh" class="mini-btn" style="flex:1;" onclick="setPowerPlan('high')">🚀 Prestazioni</button>
@@ -1054,7 +1117,7 @@
   <div id="btModal" class="modal-backdrop" onclick="if(event.target===this)closeModals()">
     <div class="modal-card">
       <div class="modal-head">
-        <span>Connessione Bluetooth HID (v1.1.0)</span>
+        <span>Connessione Bluetooth HID (v1.2.0)</span>
         <button class="close-btn" onclick="closeModals()">Chiudi</button>
       </div>
       <div id="btDiagBox" style="padding:10px 12px; border-radius:12px; background:rgba(255,255,255,0.04); border:1px solid var(--line); font-size:12px; line-height:1.45;">
@@ -1082,25 +1145,29 @@
         Stato: In attesa di connessione dal PC...
       </div>
       <div style="font-size:12px; color:var(--muted); line-height:1.5;">
-        Per attivare i widget di <b>Telemetria Hardware (Cat. A)</b>, <b>Mixer Audio per App (Cat. B)</b> e <b>Gestione Finestre (Cat. D)</b> senza ADB né permessi di amministratore:
+        Per attivare i widget di <b>Telemetria Hardware (Cat. A)</b>, <b>Mixer Audio per App (Cat. B)</b> e <b>Gestione Finestre &amp; Doppio Monitor (Cat. D)</b>:
         <ol style="margin:8px 0 0 18px;">
           <li>Assicurati che il Pixel 6a sia associato via Bluetooth al PC.</li>
           <li>Sul PC, fai doppio clic su <b><code>AVVIA_BRIDGE_PC.bat</code></b> (nella cartella <code>PhoneBox</code>).</li>
-          <li>Lo script PowerShell si collegherà automaticamente via Bluetooth RFCOMM a questa app.</li>
+          <li>Scorri a destra o sinistra sullo schermo per passare tra le 4 pagine, oppure attiva il pulsante <b>🔄 Rotazione</b> in alto a destra.</li>
         </ol>
       </div>
     </div>
   </div>
 
-  <!-- Modal Protezione OLED & Tema -->
+  <!-- Modal Protezione OLED, Rotazione & Tema -->
   <div id="oledModal" class="modal-backdrop" onclick="if(event.target===this)closeModals()">
     <div class="modal-card">
       <div class="modal-head">
-        <span>🛡️ Protezione AMOLED (Pixel 6a)</span>
+        <span>🛡️ Protezione AMOLED &amp; Rotazione</span>
         <button class="close-btn" onclick="closeModals()">Chiudi</button>
       </div>
       <div style="font-size:12px; color:var(--muted);">
         Il <b>Pixel Shift Orbitale</b> (±3px ogni 60s) è sempre attivo su tutte le 4 pagine.
+      </div>
+      <div>
+        <div style="font-size:12px; color:var(--muted); margin-bottom:6px;">Rotazione Automatica Schermate:</div>
+        <div id="rotChips" class="opt-group"></div>
       </div>
       <div>
         <div style="font-size:12px; color:var(--muted); margin-bottom:6px;">Auto-Dimming (riduce luminosità al 2% dopo inattività):</div>
@@ -1136,6 +1203,7 @@
   <script>
     const A = window.Android || null;
     const pad = (n) => String(n).padStart(2, '0');
+    const PAGE_COUNT = 4;
 
     // Inizializza barre dello spettro audio
     const specContainer = document.getElementById('spectrumBars');
@@ -1146,23 +1214,10 @@
       specContainer.appendChild(b);
     }
 
-    // --- Navigazione Pagine ---
-    let currentPage = 0;
-    function switchPage(idx) {
-      haptic();
-      currentPage = idx;
-      document.querySelectorAll('.page-view').forEach((el, i) => {
-        el.classList.toggle('active', i === idx);
-      });
-      document.querySelectorAll('.nav-tab').forEach((el, i) => {
-        el.classList.toggle('active', i === idx);
-      });
-      if (idx === 1) drawSparkline();
-    }
-
     // --- Configurazione persistente ---
     const defaultCfg = {
       theme: 'amoled',
+      rotateSec: 0, // 0 = Mai, 30 = 30 sec, 60 = 1 min, 300 = 5 min
       idleDimMin: 3,
       saverMin: 10,
       city: 'Milano',
@@ -1173,6 +1228,7 @@
     function saveCfg() {
       localStorage.setItem('pcc_cfg', JSON.stringify(cfg));
       applyTheme();
+      updateRotationUi();
     }
     function applyTheme() {
       document.body.setAttribute('data-theme', cfg.theme || 'amoled');
@@ -1183,7 +1239,81 @@
       try { A && A.haptic(); } catch (_) {}
     }
 
-    // --- Orologio e Data ---
+    // --- Navigazione Pagine (Swipe Orizzontale + Auto-Rotazione) ---
+    let currentPage = 0;
+    let lastPageSwitchAt = Date.now();
+
+    function switchPage(idx, fromAuto = false) {
+      if (!fromAuto) haptic();
+      currentPage = ((idx % PAGE_COUNT) + PAGE_COUNT) % PAGE_COUNT;
+      lastPageSwitchAt = Date.now();
+      document.querySelectorAll('.page-view').forEach((el, i) => {
+        el.classList.toggle('active', i === currentPage);
+      });
+      document.querySelectorAll('.p-dot').forEach((el, i) => {
+        el.classList.toggle('active', i === currentPage);
+      });
+      if (currentPage === 1) drawSparkline();
+    }
+
+    // Gestione Swipe Orizzontale (ignora tocchi che partono da uno slider range)
+    let touchStartX = 0;
+    let touchStartY = 0;
+    let touchIgnore = false;
+
+    const pagesWrapEl = document.getElementById('pagesWrap');
+    pagesWrapEl.addEventListener('pointerdown', (e) => {
+      const tag = (e.target && e.target.tagName) ? e.target.tagName.toUpperCase() : '';
+      if (tag === 'INPUT' || e.target.closest('.range-slider')) {
+        touchIgnore = true;
+        return;
+      }
+      touchIgnore = false;
+      touchStartX = e.clientX;
+      touchStartY = e.clientY;
+    }, { passive: true });
+
+    pagesWrapEl.addEventListener('pointerup', (e) => {
+      if (touchIgnore) return;
+      const dx = e.clientX - touchStartX;
+      const dy = e.clientY - touchStartY;
+      if (Math.abs(dx) > 55 && Math.abs(dx) > Math.abs(dy) * 1.4) {
+        if (dx < 0) {
+          switchPage(currentPage + 1); // Swipe verso sinistra -> pagina successiva
+        } else {
+          switchPage(currentPage - 1); // Swipe verso destra -> pagina precedente
+        }
+      }
+    }, { passive: true });
+
+    // Pulsante Rotazione Schermate (cicla tra Mai -> 30s -> 1m -> 5m)
+    const ROT_STEPS = [
+      [0, 'Mai'],
+      [30, '30 sec'],
+      [60, '1 min'],
+      [300, '5 min']
+    ];
+
+    function updateRotationUi() {
+      const btn = document.getElementById('rotBtn');
+      const lbl = document.getElementById('rotLabel');
+      const found = ROT_STEPS.find(([sec]) => sec === Number(cfg.rotateSec)) || ROT_STEPS[0];
+      lbl.textContent = `Rotazione: ${found[1]}`;
+      btn.classList.toggle('rot-active', found[0] > 0);
+    }
+    updateRotationUi();
+
+    function cycleRotationSetting() {
+      haptic();
+      const idx = ROT_STEPS.findIndex(([sec]) => sec === Number(cfg.rotateSec));
+      const next = ROT_STEPS[(idx + 1) % ROT_STEPS.length];
+      cfg.rotateSec = next[0];
+      lastPageSwitchAt = Date.now();
+      saveCfg();
+      showFeedback(`🔄 Rotazione: ${next[1]}`);
+    }
+
+    // --- Orologio, Data & Controllo Rotazione / Idle ---
     function tickClock() {
       const now = new Date();
       const h = pad(now.getHours()), m = pad(now.getMinutes()), s = pad(now.getSeconds());
@@ -1195,6 +1325,14 @@
       const dStr = now.toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long' });
       document.getElementById('dateStr').textContent = dStr;
       document.getElementById('svDate').textContent = dStr;
+
+      // Rotazione automatica pagine se impostata (30s, 1m, 5m) e nessun modale aperto
+      const rotMs = Number(cfg.rotateSec || 0) * 1000;
+      const anyModalOpen = !!document.querySelector('.modal-backdrop.open');
+      if (rotMs > 0 && !isSaver && !anyModalOpen && (Date.now() - lastPageSwitchAt >= rotMs)) {
+        switchPage(currentPage + 1, true);
+      }
+
       checkIdleState();
     }
     setInterval(tickClock, 1000);
@@ -1354,7 +1492,7 @@
       if (!el) return;
       el.textContent = text;
       clearTimeout(fbTimer);
-      fbTimer = setTimeout(() => { el.textContent = 'Pronto'; }, 1500);
+      fbTimer = setTimeout(() => { el.textContent = 'Scorri ⇆ per le altre schede'; }, 1600);
     }
 
     function triggerMedia(usageCode, label, btnEl) {
@@ -1403,6 +1541,10 @@
       const lbl = document.getElementById('bridgeLabel');
       dot.className = 'dot ' + (bridgeActive ? 'on' : '');
       lbl.textContent = bridgeActive ? `⚡ Bridge: ${bridgeHost}` : 'Bridge PS1: Attesa';
+      if (!bridgeActive) {
+        // Se il bridge si disconnette, nascondi il banner Now Playing
+        document.getElementById('nowPlayingBar').classList.remove('visible');
+      }
       const st = document.getElementById('bridgeModalStatus');
       if (st) {
         st.innerHTML = bridgeActive
@@ -1458,7 +1600,6 @@
       const ramPct = Math.round(d.ramPct || 0);
       const gpu = Math.round(d.gpu || 0);
 
-      document.getElementById('homeCpuBadge').textContent = `CPU ${cpu}% · RAM ${ramPct}%`;
       document.getElementById('hwCpuVal').textContent = cpu + '%';
       document.getElementById('hwCpuBar').style.width = cpu + '%';
       document.getElementById('hwRamVal').textContent = ramPct + '%';
@@ -1506,13 +1647,17 @@
         renderProcList(d.procs);
       }
 
-      // Now Playing & Master Volume
-      if (d.mediaTitle) {
-        document.getElementById('homeNpTitle').textContent = `🎵 ${d.mediaTitle}`;
-        document.getElementById('homeNpSub').textContent = d.mediaApp ? `Riproduzione su ${d.mediaApp}` : 'Audio PC attivo';
+      // Banner Now Playing Live: visibile SOLO se c'è un programma multimediale attivo, altrimenti sparisce!
+      const npBar = document.getElementById('nowPlayingBar');
+      const hasMedia = typeof d.mediaTitle === 'string' && d.mediaTitle.trim().length > 0;
+      if (hasMedia) {
+        npBar.classList.add('visible');
+        document.getElementById('homeNpTitle').textContent = `🎵 ${d.mediaTitle.trim()}`;
+        document.getElementById('homeNpSub').textContent = d.mediaApp ? `Sorgente: ${d.mediaApp}` : 'In riproduzione sul PC';
       } else {
-        document.getElementById('homeNpTitle').textContent = '🎵 Nessun brano multimediale in riproduzione';
-        document.getElementById('homeNpSub').textContent = `Bridge attivo su ${d.host || 'PC'}`;
+        npBar.classList.remove('visible');
+        document.getElementById('homeNpTitle').textContent = '';
+        document.getElementById('homeNpSub').textContent = '';
       }
 
       if (d.vol !== undefined) {
@@ -1537,42 +1682,42 @@
       if (Array.isArray(d.apps)) {
         document.getElementById('appCountLbl').textContent = `${d.apps.length} sessioni`;
         const mBox = document.getElementById('appMixerBox');
-        mBox.innerHTML = d.apps.map((ap) => `
-          <div class="mixer-row">
-            <div class="mixer-top">
-              <span style="font-weight:600;">${ap.name} <span style="color:var(--muted);font-weight:400;">(#${ap.pid})</span></span>
-              <div style="display:flex; align-items:center; gap:6px;">
-                <span style="font-size:11px; color:rgb(var(--accent));">${ap.vol}%</span>
-                <button class="mini-btn ${ap.muted ? 'danger' : ''}" onclick="sendBridge({cmd:'setAppMute', pid:${ap.pid}, mute:${!ap.muted}})">
-                  ${ap.muted ? '🔇' : '🔊'}
-                </button>
+        if (d.apps.length === 0) {
+          mBox.innerHTML = `<div style="font-size:12px; color:var(--muted); padding:8px;">Nessuna applicazione audio attiva al momento.</div>`;
+        } else {
+          mBox.innerHTML = d.apps.map((ap) => `
+            <div class="mixer-row">
+              <div class="mixer-top">
+                <span style="font-weight:600;">${ap.name} <span style="color:var(--muted);font-weight:400;">(#${ap.pid})</span></span>
+                <div style="display:flex; align-items:center; gap:6px;">
+                  <span style="font-size:11px; color:rgb(var(--accent));">${ap.vol}%</span>
+                  <button class="mini-btn ${ap.muted ? 'danger' : ''}" onclick="sendBridge({cmd:'setAppMute', pid:${ap.pid}, mute:${!ap.muted}})">
+                    ${ap.muted ? '🔇' : '🔊'}
+                  </button>
+                </div>
               </div>
+              <input class="range-slider" type="range" min="0" max="100" value="${ap.vol}"
+                onchange="sendBridge({cmd:'setAppVolume', pid:${ap.pid}, value:Number(this.value)})" />
             </div>
-            <input class="range-slider" type="range" min="0" max="100" value="${ap.vol}"
-              onchange="sendBridge({cmd:'setAppVolume', pid:${ap.pid}, value:Number(this.value)})" />
-          </div>
-        `).join('');
+          `).join('');
+        }
       }
 
-      // Uscite Audio
-      if (Array.isArray(d.outputs)) {
-        const oBox = document.getElementById('audioOutList');
-        oBox.innerHTML = d.outputs.map((o) => `
-          <div class="list-row">
-            <div class="row-main">
-              <div class="row-title">🔈 ${o.name}</div>
-            </div>
-            <span style="font-size:11px; color:var(--ok); font-weight:600;">Attiva</span>
-          </div>
-        `).join('');
+      // Luminosità Doppio Monitor (Portatile Interno + Monitor Esterno Docking)
+      const intB = (d.brightnessInt !== undefined) ? d.brightnessInt : d.brightness;
+      if (intB !== undefined && intB >= 0) {
+        document.getElementById('intBrightLbl').textContent = intB + '%';
+        document.getElementById('intBrightSlider').value = intB;
+      }
+      if (d.extMonitorName) {
+        document.getElementById('extMonTitle').textContent = `🖥️ ${d.extMonitorName}`;
+      }
+      if (d.brightnessExt !== undefined && d.brightnessExt >= 0) {
+        document.getElementById('extBrightLbl').textContent = d.brightnessExt + '%';
+        document.getElementById('extBrightSlider').value = d.brightnessExt;
       }
 
-      // Luminosità & Finestre Attive
-      if (d.brightness !== undefined && d.brightness >= 0) {
-        document.getElementById('pcBrightLbl').textContent = d.brightness + '%';
-        document.getElementById('pcBrightSlider').value = d.brightness;
-      }
-
+      // Finestre Attive
       if (Array.isArray(d.windows)) {
         document.getElementById('winCountLbl').textContent = `${d.windows.length} finestre`;
         const wBox = document.getElementById('winListBox');
@@ -1610,7 +1755,6 @@
       const w = cv.width, h = cv.height;
       ctx.clearRect(0, 0, w, h);
 
-      // Griglia leggera
       ctx.strokeStyle = 'rgba(255,255,255,0.06)';
       ctx.beginPath();
       ctx.moveTo(0, h / 2); ctx.lineTo(w, h / 2);
@@ -1633,8 +1777,6 @@
     }
 
     // --- Azioni Finestre, Snap & Power (Cat. D) ---
-    // Usa sia il Bridge sia scorciatoie da tastiera HID nativo!
-    // Modificatori HID: Left GUI (Win) = 0x08, Left Ctrl = 0x01
     function sendWinSnap(action) {
       haptic();
       if (bridgeActive) {
@@ -1767,6 +1909,16 @@
 
     function openOledModal() {
       haptic();
+      const rotBox = document.getElementById('rotChips');
+      rotBox.innerHTML = '';
+      ROT_STEPS.forEach(([val, lbl]) => {
+        const b = document.createElement('button');
+        b.className = 'opt-chip' + (Number(cfg.rotateSec) === val ? ' on' : '');
+        b.textContent = lbl;
+        b.onclick = () => { cfg.rotateSec = val; lastPageSwitchAt = Date.now(); saveCfg(); openOledModal(); };
+        rotBox.appendChild(b);
+      });
+
       const dimBox = document.getElementById('dimChips');
       dimBox.innerHTML = '';
       [[1, '1 min'], [3, '3 min'], [5, '5 min'], [10, '10 min'], [0, 'Mai']].forEach(([val, lbl]) => {
