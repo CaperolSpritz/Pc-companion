@@ -889,6 +889,7 @@
             </button>
 
             <button class="hid-key" style="--k: 56, 189, 248;"
+              onclick="triggerMedia(0x00EA, 'Volume −', this)"
               onpointerdown="startRepeatMedia(0x00EA, 'Volume −', this)"
               onpointerup="stopRepeatMedia()" onpointerleave="stopRepeatMedia()" onpointercancel="stopRepeatMedia()">
               <svg class="sub-shift" viewBox="0 0 24 24"><path d="M18.5 12c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM5 9v6h4l5 5V4L9 9H5z"/></svg>
@@ -901,6 +902,7 @@
             </button>
 
             <button class="hid-key" style="--k: 56, 189, 248;"
+              onclick="triggerMedia(0x00E9, 'Volume +', this)"
               onpointerdown="startRepeatMedia(0x00E9, 'Volume +', this)"
               onpointerup="stopRepeatMedia()" onpointerleave="stopRepeatMedia()" onpointercancel="stopRepeatMedia()">
               <svg class="sub-shift" viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>
@@ -1256,35 +1258,69 @@
       if (currentPage === 1) drawSparkline();
     }
 
-    // Gestione Swipe Orizzontale (ignora tocchi che partono da uno slider range)
+    // Gestione Swipe Orizzontale con blocco totale dei click accidentali sui pulsanti sottostanti
     let touchStartX = 0;
     let touchStartY = 0;
     let touchIgnore = false;
+    let isSwipingGesture = false;
+    let suppressClickUntil = 0;
 
     const pagesWrapEl = document.getElementById('pagesWrap');
-    pagesWrapEl.addEventListener('pointerdown', (e) => {
-      const tag = (e.target && e.target.tagName) ? e.target.tagName.toUpperCase() : '';
-      if (tag === 'INPUT' || e.target.closest('.range-slider')) {
+
+    window.addEventListener('pointerdown', (e) => {
+      if (document.querySelector('.modal-backdrop.open')) {
         touchIgnore = true;
         return;
       }
+      const tag = (e.target && e.target.tagName) ? e.target.tagName.toUpperCase() : '';
+      if (tag === 'INPUT' || (e.target && e.target.closest && e.target.closest('.range-slider'))) {
+        touchIgnore = true;
+        isSwipingGesture = false;
+        return;
+      }
       touchIgnore = false;
+      isSwipingGesture = false;
       touchStartX = e.clientX;
       touchStartY = e.clientY;
-    }, { passive: true });
+    }, { capture: true, passive: true });
 
-    pagesWrapEl.addEventListener('pointerup', (e) => {
+    window.addEventListener('pointermove', (e) => {
       if (touchIgnore) return;
       const dx = e.clientX - touchStartX;
       const dy = e.clientY - touchStartY;
-      if (Math.abs(dx) > 55 && Math.abs(dx) > Math.abs(dy) * 1.4) {
+      if (Math.abs(dx) > 12 || Math.abs(dy) > 12) {
+        stopRepeatMedia();
+      }
+      if (Math.abs(dx) > 20 && Math.abs(dx) > Math.abs(dy) * 1.25) {
+        isSwipingGesture = true;
+        suppressClickUntil = Date.now() + 450;
+      }
+    }, { capture: true, passive: true });
+
+    window.addEventListener('pointerup', (e) => {
+      if (touchIgnore) return;
+      const dx = e.clientX - touchStartX;
+      const dy = e.clientY - touchStartY;
+      if (Math.abs(dx) > 55 && Math.abs(dx) > Math.abs(dy) * 1.3) {
+        isSwipingGesture = true;
+        suppressClickUntil = Date.now() + 450;
         if (dx < 0) {
           switchPage(currentPage + 1); // Swipe verso sinistra -> pagina successiva
         } else {
           switchPage(currentPage - 1); // Swipe verso destra -> pagina precedente
         }
       }
-    }, { passive: true });
+    }, { capture: true, passive: true });
+
+    // Intercetta in fase di capture qualsiasi click generato alla fine di uno swipe
+    window.addEventListener('click', (e) => {
+      if (isSwipingGesture || Date.now() < suppressClickUntil) {
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        e.preventDefault();
+        isSwipingGesture = false;
+      }
+    }, true);
 
     // Pulsante Rotazione Schermate (cicla tra Mai -> 30s -> 1m -> 5m)
     const ROT_STEPS = [
@@ -1513,13 +1549,16 @@
     let repeatTimer = null;
     let repeatInterval = null;
     function startRepeatMedia(usageCode, label, btnEl) {
-      triggerMedia(usageCode, label, btnEl);
+      // Non inviare subito al pointerdown (così se l'utente inizia uno swipe sul pulsante non parte il comando!)
+      // Il tocco singolo viene gestito da onclick; qui parte solo la ripetizione se tiene premuto fermo per > 420ms.
       stopRepeatMedia();
       repeatTimer = setTimeout(() => {
+        if (isSwipingGesture) return;
         repeatInterval = setInterval(() => {
+          if (isSwipingGesture) { stopRepeatMedia(); return; }
           triggerMedia(usageCode, label, btnEl);
-        }, 130);
-      }, 380);
+        }, 140);
+      }, 420);
     }
     function stopRepeatMedia() {
       clearTimeout(repeatTimer);

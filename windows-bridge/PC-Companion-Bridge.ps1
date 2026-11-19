@@ -1,19 +1,27 @@
 <#
 .SYNOPSIS
-    PC-Companion Bridge (v1.2.0) - Script PowerShell user-space per Pixel 6a
+    PC-Companion Bridge (v1.2.1) - Script PowerShell user-space per Pixel 6a
     Comunica bidirezionalmente via Bluetooth RFCOMM nativo (Winsock AF_BTH)
-    Supporta:
-      - Telemetria Hardware & Task Manager (Cat. A)
-      - Mixer Audio per App & Now Playing Live con auto-hide (Cat. B)
-      - Gestione Finestre, Doppio Monitor (Interno WMI + Esterno DDC/CI) e Power (Cat. D)
+    Include:
+      - Auto-terminazione istanze precedenti dello script
+      - Windows SMTC (GlobalSystemMediaTransportControlsSessionManager) + CoreAudio Peak per Now Playing reale
+      - Doppio Monitor rapido: Interno (WMI) + Esterno Dell S3422DW (DDC/CI VCP 0x10 con filtro GetMonitorInfo)
 #>
 
 $ErrorActionPreference = 'SilentlyContinue'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-$Host.UI.RawUI.WindowTitle = "PC-Companion Bridge v1.2.0 (Bluetooth RFCOMM)"
+$Host.UI.RawUI.WindowTitle = "PC-Companion Bridge v1.2.1 (Bluetooth RFCOMM)"
+
+# 0. Termina automaticamente eventuali vecchie istanze di PC-Companion-Bridge.ps1 rimaste in background
+Get-CimInstance Win32_Process -Filter "Name = 'powershell.exe'" | Where-Object {
+    $_.ProcessId -ne $PID -and $_.CommandLine -match 'PC-Companion-Bridge\.ps1'
+} | ForEach-Object {
+    Write-Host "[*] Chiusura vecchia istanza Bridge in background (PID $($_.ProcessId))..." -ForegroundColor Yellow
+    Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
+}
 
 Write-Host "================================================================" -ForegroundColor Cyan
-Write-Host "   PC-COMPANION BRIDGE v1.2.0 - Telemetria, Mixer & 2 Monitor   " -ForegroundColor Cyan
+Write-Host "   PC-COMPANION BRIDGE v1.2.1 - Telemetria, SMTC & 2 Monitor    " -ForegroundColor Cyan
 Write-Host "   Connessione diretta Bluetooth RFCOMM (Zero ADB / Zero Admin) " -ForegroundColor Gray
 Write-Host "================================================================" -ForegroundColor Cyan
 Write-Host ""
@@ -26,6 +34,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Threading;
 
 public class PcCompanionNative {
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
@@ -193,6 +202,7 @@ public class PcCompanionNative {
         public int vol;
         public bool muted;
         public int state; // 0 = Inactive, 1 = Active, 2 = Expired
+        public float peak; // 0.0 .. 1.0 real-time audio stream peak
     }
 
     public static List<AppAudioInfo> GetAudioSessions() {
@@ -213,13 +223,18 @@ public class PcCompanionNative {
                 if (ctl == null) continue;
                 int st = 0;
                 ctl.GetState(out st);
-                if (st == 2) continue; // Ignore expired sessions
+                if (st == 2) continue;
                 uint pid; ctl.GetProcessId(out pid);
                 if (pid == 0) continue;
                 var sav = ctl as ISimpleAudioVolume;
                 if (sav == null) continue;
                 float v; sav.GetMasterVolume(out v);
                 bool m; sav.GetMute(out m);
+                float pk = 0f;
+                var meter = ctl as IAudioMeterInformation;
+                if (meter != null) {
+                    meter.GetPeakValue(out pk);
+                }
                 string pName = null;
                 try {
                     var p = Process.GetProcessById((int)pid);
@@ -231,13 +246,15 @@ public class PcCompanionNative {
                 int ipid = (int)pid;
                 if (byPid.ContainsKey(ipid)) {
                     if (st == 1) byPid[ipid].state = 1;
+                    if (pk > byPid[ipid].peak) byPid[ipid].peak = pk;
                 } else {
                     var info = new AppAudioInfo {
                         pid = ipid,
                         name = pName,
                         vol = (int)Math.Round(v * 100f),
                         muted = m,
-                        state = st
+                        state = st,
+                        peak = pk
                     };
                     byPid[ipid] = info;
                     list.Add(info);
@@ -274,7 +291,31 @@ public class PcCompanionNative {
         } catch { }
     }
 
-    // --- DDC/CI External Monitor Brightness (dxva2.dll VCP 0x10) ---
+    // --- Fast DDC/CI External Monitor Brightness (dxva2.dll VCP 0x10 with GetMonitorInfo filter) ---
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
+    public struct MONITORINFOEX {
+        public int cbSize;
+        public int rcMonitorL, rcMonitorT, rcMonitorR, rcMonitorB;
+        public int rcWorkL, rcWorkT, rcWorkR, rcWorkB;
+        public uint dwFlags;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)]
+        public string szDevice;
+    }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
+    public struct DISPLAY_DEVICE {
+        public int cb;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)]
+        public string DeviceName;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)]
+        public string DeviceString;
+        public uint StateFlags;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)]
+        public string DeviceID;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)]
+        public string DeviceKey;
+    }
+
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
     public struct PHYSICAL_MONITOR {
         public IntPtr hPhysicalMonitor;
@@ -283,84 +324,90 @@ public class PcCompanionNative {
     }
 
     [StructLayout(LayoutKind.Sequential)]
-    public struct POINT {
-        public int x, y;
-    }
+    public struct RECT { public int left, top, right, bottom; }
+    public delegate bool MonitorEnumProc(IntPtr hMonitor, IntPtr hdcMonitor, ref RECT lprcMonitor, IntPtr dwData);
 
-    [DllImport("user32.dll")] public static extern IntPtr MonitorFromPoint(POINT pt, uint dwFlags);
+    [DllImport("user32.dll")] public static extern bool EnumDisplayMonitors(IntPtr hdc, IntPtr lprcClip, MonitorEnumProc lpfnEnum, IntPtr dwData);
+    [DllImport("user32.dll", CharSet = CharSet.Auto)] public static extern bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFOEX lpmi);
+    [DllImport("user32.dll", CharSet = CharSet.Auto)] public static extern bool EnumDisplayDevices(string lpDevice, uint iDevNum, ref DISPLAY_DEVICE lpDisplayDevice, uint dwFlags);
     [DllImport("dxva2.dll", SetLastError = true)] public static extern bool GetNumberOfPhysicalMonitorsFromHMONITOR(IntPtr hMonitor, out uint pdwNumberOfPhysicalMonitors);
     [DllImport("dxva2.dll", SetLastError = true, CharSet = CharSet.Auto)] public static extern bool GetPhysicalMonitorsFromHMONITOR(IntPtr hMonitor, uint dwPhysicalMonitorArraySize, [Out] PHYSICAL_MONITOR[] pPhysicalMonitorArray);
     [DllImport("dxva2.dll", SetLastError = true)] public static extern bool GetVCPFeatureAndVCPFeatureReply(IntPtr hMonitor, byte bVCPCode, IntPtr pvct, out uint pdwCurrentValue, out uint pdwMaximumValue);
     [DllImport("dxva2.dll", SetLastError = true)] public static extern bool SetVCPFeature(IntPtr hMonitor, byte bVCPCode, uint dwNewValue);
     [DllImport("dxva2.dll", SetLastError = true)] public static extern bool DestroyPhysicalMonitors(uint dwPhysicalMonitorArraySize, [In] PHYSICAL_MONITOR[] pPhysicalMonitorArray);
 
-    private static IntPtr cachedExtHandle = IntPtr.Zero;
-    public static string cachedExtName = "Monitor Esterno (Docking)";
+    public static string cachedExtName = "Dell S3422DW (Docking)";
 
-    private static IntPtr EnsureExternalMonitorHandle() {
-        if (cachedExtHandle != IntPtr.Zero) return cachedExtHandle;
-        int[][] testPoints = new int[][] {
-            new int[] { 0, 0 },
-            new int[] { 2500, 0 },
-            new int[] { -1500, 0 },
-            new int[] { 0, -1000 }
-        };
-        var seenHMon = new HashSet<long>();
-        foreach (var pt in testPoints) {
-            IntPtr hMon = MonitorFromPoint(new POINT { x = pt[0], y = pt[1] }, 2);
-            if (hMon == IntPtr.Zero || seenHMon.Contains(hMon.ToInt64())) continue;
-            seenHMon.Add(hMon.ToInt64());
+    public static int ReadExternalBrightness() {
+        int result = -1;
+        EnumDisplayMonitors(IntPtr.Zero, IntPtr.Zero, (IntPtr hMon, IntPtr hdc, ref RECT rc, IntPtr data) => {
+            var mi = new MONITORINFOEX();
+            mi.cbSize = Marshal.SizeOf(mi);
+            if (!GetMonitorInfo(hMon, ref mi)) return true;
+            var dd = new DISPLAY_DEVICE();
+            dd.cb = Marshal.SizeOf(dd);
+            if (!EnumDisplayDevices(mi.szDevice, 0, ref dd, 0)) return true;
+
+            // Skip internal laptop display (CMN1512 / Generic PnP Monitor) so we only open DDC/CI on external monitor!
+            if (dd.DeviceID.IndexOf("CMN", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                dd.DeviceString.IndexOf("Generic", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                dd.DeviceString.IndexOf("generico", StringComparison.OrdinalIgnoreCase) >= 0) {
+                return true;
+            }
+
             uint count = 0;
             if (GetNumberOfPhysicalMonitorsFromHMONITOR(hMon, out count) && count > 0) {
                 var arr = new PHYSICAL_MONITOR[count];
                 if (GetPhysicalMonitorsFromHMONITOR(hMon, count, arr)) {
-                    for (int i = 0; i < count; i++) {
-                        string desc = arr[i].szPhysicalMonitorDescription ?? "";
-                        if (desc.IndexOf("Generic PnP", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                            desc.IndexOf("Monitor generico", StringComparison.OrdinalIgnoreCase) >= 0) {
-                            DestroyPhysicalMonitors(1, new PHYSICAL_MONITOR[] { arr[i] });
-                            continue;
-                        }
-                        cachedExtHandle = arr[i].hPhysicalMonitor;
-                        if (!string.IsNullOrEmpty(desc)) cachedExtName = desc;
-                        return cachedExtHandle;
+                    if (!string.IsNullOrEmpty(arr[0].szPhysicalMonitorDescription)) {
+                        cachedExtName = arr[0].szPhysicalMonitorDescription;
                     }
+                    uint cur = 0, max = 0;
+                    if (GetVCPFeatureAndVCPFeatureReply(arr[0].hPhysicalMonitor, 0x10, IntPtr.Zero, out cur, out max) && max > 0) {
+                        result = (int)cur;
+                    }
+                    DestroyPhysicalMonitors(count, arr);
                 }
             }
-        }
-        return IntPtr.Zero;
-    }
-
-    public static int ReadExternalBrightness() {
-        try {
-            IntPtr h = EnsureExternalMonitorHandle();
-            if (h == IntPtr.Zero) return -1;
-            for (int attempt = 0; attempt < 2; attempt++) {
-                uint cur = 0, max = 0;
-                if (GetVCPFeatureAndVCPFeatureReply(h, 0x10, IntPtr.Zero, out cur, out max) && max > 0) {
-                    return (int)cur;
-                }
-                System.Threading.Thread.Sleep(50);
-            }
-        } catch {
-            cachedExtHandle = IntPtr.Zero;
-        }
-        return -1;
+            return true;
+        }, IntPtr.Zero);
+        return result;
     }
 
     public static bool WriteExternalBrightness(int val) {
-        try {
-            IntPtr h = EnsureExternalMonitorHandle();
-            if (h == IntPtr.Zero) return false;
-            uint target = (uint)Math.Max(0, Math.Min(100, val));
-            for (int attempt = 0; attempt < 2; attempt++) {
-                if (SetVCPFeature(h, 0x10, target)) return true;
-                System.Threading.Thread.Sleep(40);
+        bool ok = false;
+        uint target = (uint)Math.Max(0, Math.Min(100, val));
+        EnumDisplayMonitors(IntPtr.Zero, IntPtr.Zero, (IntPtr hMon, IntPtr hdc, ref RECT rc, IntPtr data) => {
+            var mi = new MONITORINFOEX();
+            mi.cbSize = Marshal.SizeOf(mi);
+            if (!GetMonitorInfo(hMon, ref mi)) return true;
+            var dd = new DISPLAY_DEVICE();
+            dd.cb = Marshal.SizeOf(dd);
+            if (!EnumDisplayDevices(mi.szDevice, 0, ref dd, 0)) return true;
+
+            if (dd.DeviceID.IndexOf("CMN", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                dd.DeviceString.IndexOf("Generic", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                dd.DeviceString.IndexOf("generico", StringComparison.OrdinalIgnoreCase) >= 0) {
+                return true;
             }
-        } catch {
-            cachedExtHandle = IntPtr.Zero;
-        }
-        return false;
+
+            uint count = 0;
+            if (GetNumberOfPhysicalMonitorsFromHMONITOR(hMon, out count) && count > 0) {
+                var arr = new PHYSICAL_MONITOR[count];
+                if (GetPhysicalMonitorsFromHMONITOR(hMon, count, arr)) {
+                    for (int attempt = 0; attempt < 2; attempt++) {
+                        if (SetVCPFeature(arr[0].hPhysicalMonitor, 0x10, target)) {
+                            ok = true;
+                            break;
+                        }
+                        Thread.Sleep(30);
+                    }
+                    DestroyPhysicalMonitors(count, arr);
+                }
+            }
+            return true;
+        }, IntPtr.Zero);
+        return ok;
     }
 
     // --- User32 Window & System Management ---
@@ -404,12 +451,12 @@ public class PcCompanionNative {
 
     public static void FocusWindow(long hwnd) {
         IntPtr h = new IntPtr(hwnd);
-        ShowWindow(h, 9); // SW_RESTORE
+        ShowWindow(h, 9);
         SetForegroundWindow(h);
     }
 
     public static void CloseWindow(long hwnd) {
-        PostMessage(new IntPtr(hwnd), 0x0010, IntPtr.Zero, IntPtr.Zero); // WM_CLOSE
+        PostMessage(new IntPtr(hwnd), 0x0010, IntPtr.Zero, IntPtr.Zero);
     }
 
     public static void TurnOffMonitors() {
@@ -432,12 +479,40 @@ public class PcCompanionNative {
 
 Add-Type -TypeDefinition $csCode -Language CSharp
 
-$SERVICE_UUID = [Guid]::Parse("8ce255c0-200a-11e0-ac64-0800200c9a66")
+# Inizializza Windows SMTC (GlobalSystemMediaTransportControlsSessionManager) - il sistema usato dai dispositivi commerciali (Stream Deck, ecc.)
+$script:smtcManager = $null
+$script:asTaskGeneric = $null
+try {
+    Add-Type -AssemblyName System.Runtime.WindowsRuntime
+    $null = [Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager, Windows.Media.Control, ContentType = WindowsRuntime]
+    $null = [Windows.Media.Control.GlobalSystemMediaTransportControlsSessionMediaProperties, Windows.Media.Control, ContentType = WindowsRuntime]
+    $null = [Windows.Foundation.IAsyncOperation`1, Windows.Foundation, ContentType = WindowsRuntime]
+    $script:asTaskGeneric = ([System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object {
+        $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`1'
+    })[0]
+    function Invoke-WinRtAwait($WinRtTask, $ResultType) {
+        $asTask = $script:asTaskGeneric.MakeGenericMethod($ResultType)
+        $netTask = $asTask.Invoke($null, @($WinRtTask))
+        $netTask.Wait(400) | Out-Null
+        return $netTask.Result
+    }
+    $script:smtcManager = Invoke-WinRtAwait ([Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager]::RequestAsync()) ([Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager])
+    Write-Host "[OK] Windows SMTC (Media Session Manager) attivo." -ForegroundColor Green
+} catch {
+    Write-Host "[INFO] Windows SMTC non disponibile, uso rilevamento picco CoreAudio." -ForegroundColor DarkGray
+}
 
+# Legge all'avvio la luminosità reale del monitor esterno Dell S3422DW
+$script:cachedExtBrightness = [PcCompanionNative]::ReadExternalBrightness()
+if ($script:cachedExtBrightness -ge 0) {
+    Write-Host "[OK] Monitor Esterno rilevato: $([PcCompanionNative]::cachedExtName) (Luminosità attuale: $($script:cachedExtBrightness)%)" -ForegroundColor Green
+} else {
+    $script:cachedExtBrightness = 90
+}
+
+$SERVICE_UUID = [Guid]::Parse("8ce255c0-200a-11e0-ac64-0800200c9a66")
 $script:cachedDisks = @()
 $script:lastDiskTick = 0
-$script:cachedExtBrightness = -1
-$script:lastExtBrightTick = 0
 
 function Find-PixelBluetoothAddress {
     $btDevs = Get-CimInstance Win32_PnPEntity | Where-Object {
@@ -499,10 +574,12 @@ function Handle-PhoneCommand([string]$jsonLine) {
                 $bVal = [int]$cmdObj.value
                 $targetMon = if ($cmdObj.monitor) { [string]$cmdObj.monitor } else { 'internal' }
                 if ($targetMon -eq 'external') {
+                    Write-Host "     -> Imposto luminosità Monitor Esterno (DDC/CI) a $bVal%" -ForegroundColor Magenta
                     if ([PcCompanionNative]::WriteExternalBrightness($bVal)) {
                         $script:cachedExtBrightness = $bVal
                     }
                 } else {
+                    Write-Host "     -> Imposto luminosità Display Portatile (WMI) a $bVal%" -ForegroundColor Yellow
                     $mon = Get-CimInstance -Namespace root\wmi -ClassName WmiMonitorBrightnessMethods -ErrorAction SilentlyContinue
                     if ($mon) {
                         Invoke-CimMethod -InputObject $mon -MethodName WmiSetBrightness -Arguments @{Timeout=1; Brightness=$bVal} | Out-Null
@@ -533,6 +610,49 @@ function Handle-PhoneCommand([string]$jsonLine) {
     } catch {
         Write-Host "  [!] Errore esecuzione comando: $($_.Exception.Message)" -ForegroundColor Red
     }
+}
+
+function Get-CommercialNowPlaying($sessionsRaw) {
+    # Verifica quali processi stanno effettivamente emettendo campioni audio (state == 1 e peak > 0.001)
+    $streamingProcs = @{}
+    foreach ($s in $sessionsRaw) {
+        if ($s.state -eq 1 -and $s.peak -gt 0.0008) {
+            $streamingProcs[$s.name.ToLower()] = $true
+        }
+    }
+
+    # 1. Metodo Commerciale Primario: Windows SMTC (GlobalSystemMediaTransportControlsSessionManager)
+    # Si aggancia SOLO alle vere sessioni multimediali in riproduzione (PlaybackStatus == Playing)
+    if ($null -ne $script:smtcManager) {
+        try {
+            foreach ($smtc in $script:smtcManager.GetSessions()) {
+                $pInfo = $smtc.GetPlaybackInfo()
+                if ($null -ne $pInfo -and $pInfo.PlaybackStatus.ToString() -eq 'Playing') {
+                    $props = Invoke-WinRtAwait ($smtc.TryGetMediaPropertiesAsync()) ([Windows.Media.Control.GlobalSystemMediaTransportControlsSessionMediaProperties])
+                    if ($null -ne $props -and -not [string]::IsNullOrWhiteSpace($props.Title)) {
+                        $srcApp = ($smtc.SourceAppUserModelId -replace '\.exe$', '')
+                        $sub = if (-not [string]::IsNullOrWhiteSpace($props.Artist)) { "$($props.Artist) · $srcApp" } else { $srcApp }
+                        return @{ title = $props.Title.Trim(); app = $sub }
+                    }
+                }
+            }
+        } catch {}
+    }
+
+    # 2. Fallback per player desktop che non usano SMTC (es. VLC classico / Winamp / Foobar) SOLO se stanno emettendo suono reale (peak > 0.001)
+    if ($streamingProcs.Count -gt 0) {
+        foreach ($w in [PcCompanionNative]::GetOpenWindows()) {
+            $pLower = ($w.proc + "").ToLower()
+            if ($streamingProcs.ContainsKey($pLower) -and $pLower -match '^(spotify|vlc|foobar2000|aimp|wmplayer|music\.ui)$') {
+                $clean = $w.title -replace '\s*-\s*(VLC media player|foobar2000)$', ''
+                if ($clean -and $clean -ne $w.proc) {
+                    return @{ title = $clean; app = $w.proc }
+                }
+            }
+        }
+    }
+
+    return @{ title = ""; app = "" }
 }
 
 function Build-TelemetryJson {
@@ -591,50 +711,21 @@ function Build-TelemetryJson {
         @{ pid = $_.pid; name = $_.name; vol = $_.vol; muted = $_.muted }
     })
 
-    # Insieme dei processi che stanno effettivamente riproducendo audio (state == 1)
-    # o player multimediali dedicati con sessione aperta
-    $activeAudioProcs = @{}
-    foreach ($s in $sessionsRaw) {
-        if ($s.state -eq 1) {
-            $activeAudioProcs[$s.name.ToLower()] = $true
-        } elseif ($s.name -match '^(Spotify|vlc|Music\.UI|foobar2000|wmplayer|AIMP)$') {
-            $activeAudioProcs[$s.name.ToLower()] = $true
-        }
-    }
+    # Rilevamento Now Playing intelligente tramite Windows SMTC + CoreAudio Peak
+    $np = Get-CommercialNowPlaying $sessionsRaw
 
-    # Finestre Desktop & Rilevamento Brano Multimediale (solo se il processo ha una sessione audio attiva!)
+    # Finestre Desktop
     $winsRaw = [PcCompanionNative]::GetOpenWindows()
     $windows = @($winsRaw | ForEach-Object {
         @{ hwnd = $_.hwnd; title = $_.title; proc = $_.proc }
     })
 
-    $mediaTitle = ""
-    $mediaApp = ""
-    foreach ($w in $winsRaw) {
-        $pLower = ($w.proc + "").ToLower()
-        if ($activeAudioProcs.ContainsKey($pLower)) {
-            $cleanTitle = $w.title -replace '\s*-\s*(Google Chrome|Microsoft\u200B?\s*Edge|Mozilla Firefox|VLC media player|Brave|Opera)$', ''
-            if ($cleanTitle -and $cleanTitle -ne $w.proc -and $cleanTitle -ne 'Spotify Free' -and $cleanTitle -ne 'Spotify Premium' -and $cleanTitle -ne 'Spotify') {
-                $mediaTitle = $cleanTitle
-                $mediaApp = $w.proc
-                break
-            }
-        }
-    }
-
-    # 1. Luminosità Monitor Interno Portatile (WMI)
+    # Luminosità Monitor Interno Portatile (WMI)
     $brightInt = -1
     try {
         $bObj = Get-CimInstance -Namespace root\wmi -ClassName WmiMonitorBrightness -ErrorAction SilentlyContinue
         if ($bObj) { $brightInt = [int]$bObj.CurrentBrightness }
     } catch {}
-
-    # 2. Luminosità Monitor Esterno Docking (letta una volta all'avvio e aggiornata in tempo reale dallo slider)
-    if ($script:lastExtBrightTick -eq 0) {
-        $readExt = [PcCompanionNative]::ReadExternalBrightness()
-        if ($readExt -ge 0) { $script:cachedExtBrightness = $readExt } else { $script:cachedExtBrightness = 90 }
-    }
-    $script:lastExtBrightTick++
 
     $payload = @{
         host           = $env:COMPUTERNAME
@@ -651,8 +742,8 @@ function Build-TelemetryJson {
         vol            = $vol
         muted          = $muted
         peak           = $peak
-        mediaTitle     = $mediaTitle
-        mediaApp       = $mediaApp
+        mediaTitle     = $np.title
+        mediaApp       = $np.app
         apps           = $apps
         windows        = $windows
         brightnessInt  = $brightInt
@@ -675,7 +766,7 @@ while ($true) {
         $writer.AutoFlush = $true
         $reader = New-Object System.IO.StreamReader($stream, [System.Text.Encoding]::UTF8)
 
-        Write-Host "[CONNESSO] Streaming telemetria, mixer audio e doppio monitor attivo verso il Pixel 6a!" -ForegroundColor Green
+        Write-Host "[CONNESSO] Streaming telemetria, SMTC Media e doppio monitor attivo verso il Pixel 6a!" -ForegroundColor Green
 
         while ($sock.Connected) {
             $json = Build-TelemetryJson
