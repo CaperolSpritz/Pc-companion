@@ -83,7 +83,7 @@ class BluetoothHidController(
                 BluetoothAdapter.ACTION_SCAN_MODE_CHANGED -> {
                     val mode = intent.getIntExtra(BluetoothAdapter.EXTRA_SCAN_MODE, BluetoothAdapter.SCAN_MODE_NONE)
                     if (mode == BluetoothAdapter.SCAN_MODE_CONNECTABLE_DISCOVERABLE) {
-                        lastNote = "Telefono VISIBILE al PC! Ora cerca 'Pixel 6a' dal Bluetooth di Windows."
+                        lastNote = "Telefono VISIBILE al PC come 'PC-Companion'! Ora cercalo dal Bluetooth di Windows."
                     }
                     notifyUi()
                 }
@@ -230,6 +230,13 @@ class BluetoothHidController(
             notifyUi()
             return
         }
+        try {
+            if (bt.name != "PC-Companion") {
+                bt.name = "PC-Companion"
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Unable to set adapter name: ${e.message}")
+        }
         if (hidDevice == null) {
             lastNote = "Apertura profilo BluetoothHidDevice..."
             bt.getProfileProxy(activity, profileListener, BluetoothProfile.HID_DEVICE)
@@ -265,6 +272,11 @@ class BluetoothHidController(
             requestPermissions()
             return
         }
+        try {
+            adapter?.let { bt ->
+                if (bt.name != "PC-Companion") bt.name = "PC-Companion"
+            }
+        } catch (_: Exception) {}
         if (!appRegistered) {
             start()
         }
@@ -399,12 +411,17 @@ class BluetoothHidController(
             perms && bt?.scanMode == BluetoothAdapter.SCAN_MODE_CONNECTABLE_DISCOVERABLE
         } catch (_: Exception) { false }
 
+        val localName = try {
+            if (perms) (bt?.name ?: "PC-Companion") else "PC-Companion"
+        } catch (_: Exception) { "PC-Companion" }
+
         return JSONObject()
             .put("supported", bt != null)
             .put("enabled", bt?.isEnabled == true)
             .put("permissionsGranted", perms)
             .put("registered", appRegistered)
             .put("discoverable", discoverable)
+            .put("localName", localName)
             .put("state", stateStr)
             .put("note", lastNote)
             .put("hostName", if (perms) (connectedDevice?.name ?: "") else "")

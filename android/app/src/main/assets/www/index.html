@@ -8,8 +8,8 @@
     :root {
       --bg: #000000;
       --card: rgba(255, 255, 255, 0.038);
-      --card-hi: rgba(255, 255, 255, 0.075);
-      --line: rgba(255, 255, 255, 0.07);
+      --card-hi: rgba(255, 255, 255, 0.08);
+      --line: rgba(255, 255, 255, 0.075);
       --text: #eef2f6;
       --muted: #8a94a3;
       --dim: #5b6472;
@@ -21,8 +21,8 @@
       --shift-y: 0px;
       --sub-x: 0px;
       --sub-y: 0px;
-      --pad-l: max(16px, env(safe-area-inset-left));
-      --pad-r: max(16px, env(safe-area-inset-right));
+      --pad-l: max(14px, env(safe-area-inset-left));
+      --pad-r: max(14px, env(safe-area-inset-right));
       color-scheme: dark;
     }
 
@@ -81,16 +81,17 @@
       background: none;
       border: 0;
       outline: none;
+      cursor: pointer;
     }
 
-    /* --- OLED Burn-in Protection Layers --- */
-    #mainGrid {
+    /* --- OLED Burn-in Protection Shell --- */
+    #appShell {
       width: 100vw;
       height: 100vh;
-      padding: 14px var(--pad-r) 14px var(--pad-l);
-      display: grid;
-      grid-template-columns: 5fr 6fr;
-      gap: 16px;
+      padding: 10px var(--pad-r) 12px var(--pad-l);
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
       transform: translate(var(--shift-x), var(--shift-y));
       transition: transform 2.2s cubic-bezier(0.4, 0, 0.2, 1);
     }
@@ -105,7 +106,7 @@
       position: fixed;
       inset: 0;
       z-index: 50;
-      background: rgba(0, 0, 0, 0.72);
+      background: rgba(0, 0, 0, 0.74);
       opacity: 0;
       pointer-events: none;
       transition: opacity 1.2s ease;
@@ -152,33 +153,32 @@
       letter-spacing: 0.04em;
     }
 
-    /* --- Left Column: Status, Clock & Weather --- */
-    .left-col {
-      display: flex;
-      flex-direction: column;
-      justify-content: space-between;
-      min-width: 0;
-      padding: 4px 4px 4px 2px;
-    }
-
-    .top-bar {
+    /* --- Top Header: Pills & Page Tabs --- */
+    .header-bar {
       display: flex;
       align-items: center;
+      justify-content: space-between;
       gap: 8px;
-      flex-wrap: wrap;
+      flex-shrink: 0;
     }
-
+    .status-pills {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: nowrap;
+      overflow-x: auto;
+    }
     .pill-btn {
       display: inline-flex;
       align-items: center;
-      gap: 7px;
-      padding: 6px 11px;
+      gap: 6px;
+      padding: 5px 10px;
       border-radius: 999px;
       background: var(--card);
       border: 1px solid var(--line);
-      font-size: 12px;
+      font-size: 11.5px;
       color: var(--muted);
-      cursor: pointer;
+      white-space: nowrap;
       transition: transform 0.12s ease, background 0.2s ease;
     }
     .pill-btn:active {
@@ -187,10 +187,11 @@
     }
 
     .dot {
-      width: 8px;
-      height: 8px;
+      width: 7px;
+      height: 7px;
       border-radius: 50%;
       background: var(--dim);
+      flex-shrink: 0;
       transition: background 0.3s ease, box-shadow 0.3s ease;
     }
     .dot.on {
@@ -205,16 +206,89 @@
       background: var(--err);
     }
 
+    .nav-tabs {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      background: rgba(255, 255, 255, 0.03);
+      padding: 3px;
+      border-radius: 12px;
+      border: 1px solid var(--line);
+      flex-shrink: 0;
+    }
+    .nav-tab {
+      padding: 5px 10px;
+      border-radius: 9px;
+      font-size: 11.5px;
+      font-weight: 600;
+      color: var(--muted);
+      transition: background 0.18s ease, color 0.18s ease;
+      white-space: nowrap;
+    }
+    .nav-tab.active {
+      background: rgba(var(--accent), 0.2);
+      color: #ffffff;
+      box-shadow: inset 0 0 0 1px rgba(var(--accent), 0.45);
+    }
+
+    /* --- Pages Container --- */
+    .pages-wrap {
+      flex: 1;
+      min-height: 0;
+      position: relative;
+    }
+    .page-view {
+      position: absolute;
+      inset: 0;
+      display: none;
+      grid-template-columns: 5fr 6fr;
+      gap: 14px;
+      min-height: 0;
+    }
+    .page-view.active {
+      display: grid;
+    }
+
+    .col-pane {
+      display: flex;
+      flex-direction: column;
+      gap: 9px;
+      min-width: 0;
+      min-height: 0;
+      height: 100%;
+    }
+
+    .card-box {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 10px 13px;
+      min-width: 0;
+    }
+
+    .sec-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 10.5px;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+
+    /* --- PAGE 1: HOME & MEDIA --- */
     .clock-wrap {
       margin: auto 0;
-      padding: 4px 0;
+      padding: 2px 0;
     }
     .clock-main {
       display: flex;
       align-items: flex-start;
       font-weight: 200;
-      font-size: clamp(56px, 13.5vw, 112px);
-      line-height: 0.94;
+      font-size: clamp(50px, 12vw, 98px);
+      line-height: 0.92;
       letter-spacing: -0.04em;
       margin-left: -0.03em;
     }
@@ -232,10 +306,39 @@
       margin: 0.45em 0 0 0.4em;
     }
     .date-line {
-      font-size: clamp(14px, 2.2vw, 20px);
+      font-size: clamp(13px, 2vw, 18px);
       color: #c9d1db;
-      margin-top: 6px;
+      margin-top: 4px;
       text-transform: capitalize;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .now-playing-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 8px 12px;
+      border-radius: 14px;
+      background: linear-gradient(90deg, rgba(var(--accent), 0.12), rgba(255, 255, 255, 0.03));
+      border: 1px solid rgba(var(--accent), 0.28);
+    }
+    .np-meta {
+      min-width: 0;
+      flex: 1;
+    }
+    .np-title {
+      font-size: 13px;
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .np-sub {
+      font-size: 11px;
+      color: var(--muted);
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -244,43 +347,29 @@
     .wx-card {
       background: var(--card);
       border: 1px solid var(--line);
-      border-radius: 18px;
-      padding: 12px 15px;
+      border-radius: 16px;
+      padding: 10px 13px;
       display: flex;
       align-items: center;
       justify-content: space-between;
       gap: 10px;
-      cursor: pointer;
-      transition: background 0.2s ease;
-    }
-    .wx-card:active {
-      background: var(--card-hi);
     }
     .wx-left {
       display: flex;
       align-items: center;
-      gap: 12px;
+      gap: 10px;
       min-width: 0;
     }
     .wx-icon {
-      font-size: clamp(28px, 4.5vw, 40px);
+      font-size: clamp(24px, 4vw, 34px);
       line-height: 1;
     }
-    .wx-info {
-      min-width: 0;
-    }
-    .wx-row1 {
-      display: flex;
-      align-items: baseline;
-      gap: 8px;
-    }
     .wx-temp {
-      font-size: clamp(22px, 3.6vw, 32px);
+      font-size: clamp(20px, 3.2vw, 28px);
       font-weight: 300;
-      letter-spacing: -0.02em;
     }
     .wx-desc {
-      font-size: 13px;
+      font-size: 12.5px;
       font-weight: 500;
       color: #c9d1db;
       white-space: nowrap;
@@ -288,9 +377,8 @@
       text-overflow: ellipsis;
     }
     .wx-meta {
-      font-size: 12px;
+      font-size: 11px;
       color: var(--muted);
-      margin-top: 2px;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -298,8 +386,8 @@
     .wx-hourly {
       display: flex;
       align-items: center;
-      gap: 10px;
-      padding-left: 10px;
+      gap: 8px;
+      padding-left: 8px;
       border-left: 1px solid var(--line);
       flex-shrink: 0;
     }
@@ -307,43 +395,8 @@
       display: flex;
       flex-direction: column;
       align-items: center;
-      font-size: 11px;
-      gap: 2px;
-    }
-    .wx-h-time { color: var(--muted); }
-    .wx-h-val { font-weight: 600; }
-
-    /* --- Right Column: Media & Volume HID Grid --- */
-    .right-col {
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-      height: 100%;
-      min-width: 0;
-    }
-
-    .col-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 2px 4px;
-    }
-    .col-title {
-      font-size: 11px;
-      font-weight: 700;
-      letter-spacing: 0.14em;
-      text-transform: uppercase;
-      color: var(--muted);
-    }
-    .col-feedback {
-      font-size: 11.5px;
-      color: rgb(var(--accent));
-      font-weight: 500;
-      opacity: 0;
-      transition: opacity 0.2s ease;
-    }
-    .col-feedback.show {
-      opacity: 1;
+      font-size: 10.5px;
+      gap: 1px;
     }
 
     .media-grid {
@@ -351,24 +404,21 @@
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
       grid-template-rows: repeat(2, minmax(0, 1fr));
-      gap: 10px;
+      gap: 9px;
       min-height: 0;
     }
-
     .hid-key {
       position: relative;
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      gap: 8px;
-      border-radius: 18px;
+      gap: 6px;
+      border-radius: 16px;
       background: linear-gradient(160deg, rgba(var(--k, 255, 255, 255), 0.12), rgba(255, 255, 255, 0.02));
       border: 1px solid rgba(var(--k, 255, 255, 255), 0.22);
       color: var(--text);
-      cursor: pointer;
-      transition: transform 0.1s ease, filter 0.15s ease, box-shadow 0.15s ease;
-      overflow: hidden;
+      transition: transform 0.1s ease, filter 0.15s ease;
     }
     .hid-key:active, .hid-key.active {
       transform: scale(0.94);
@@ -380,67 +430,273 @@
       border-color: rgba(45, 212, 191, 0.42);
     }
     .hid-key svg {
-      width: clamp(26px, 4.2vw, 36px);
-      height: clamp(26px, 4.2vw, 36px);
+      width: clamp(22px, 3.8vw, 32px);
+      height: clamp(22px, 3.8vw, 32px);
       fill: currentColor;
     }
     .hid-key span {
-      font-size: clamp(12px, 1.6vw, 14px);
+      font-size: clamp(11px, 1.5vw, 13px);
       font-weight: 500;
-      color: #e5e9ef;
     }
 
-    /* --- Modals (Bluetooth & OLED Settings) --- */
+    /* Master Volume Bar on Home */
+    .vol-strip {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 12px;
+      border-radius: 14px;
+      background: var(--card);
+      border: 1px solid var(--line);
+    }
+    .range-slider {
+      -webkit-appearance: none;
+      appearance: none;
+      flex: 1;
+      height: 6px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.14);
+      outline: none;
+    }
+    .range-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: rgb(var(--accent));
+      border: 2px solid #ffffff;
+      cursor: pointer;
+    }
+
+    /* --- PAGE 2: HARDWARE & TASK MANAGER (CAT. A) --- */
+    .hw-gauges {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+    }
+    .gauge-card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 9px 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .g-top {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+    }
+    .g-lbl {
+      font-size: 10.5px;
+      font-weight: 700;
+      color: var(--muted);
+    }
+    .g-val {
+      font-size: 18px;
+      font-weight: 700;
+    }
+    .bar-track {
+      width: 100%;
+      height: 6px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.09);
+      overflow: hidden;
+    }
+    .bar-fill {
+      height: 100%;
+      width: 0%;
+      border-radius: 999px;
+      background: rgb(var(--accent));
+      transition: width 0.35s ease;
+    }
+    .g-sub {
+      font-size: 10px;
+      color: var(--muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .spark-canvas {
+      width: 100%;
+      height: 54px;
+      display: block;
+    }
+
+    .scroll-list {
+      flex: 1;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      padding-right: 2px;
+      min-height: 0;
+    }
+    .list-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 7px 10px;
+      border-radius: 11px;
+      background: rgba(255, 255, 255, 0.035);
+      border: 1px solid var(--line);
+      font-size: 12px;
+    }
+    .row-main {
+      min-width: 0;
+      flex: 1;
+    }
+    .row-title {
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .row-sub {
+      font-size: 10.5px;
+      color: var(--muted);
+    }
+    .mini-btn {
+      padding: 4px 8px;
+      border-radius: 7px;
+      font-size: 11px;
+      font-weight: 600;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid var(--line);
+      flex-shrink: 0;
+    }
+    .mini-btn.danger {
+      background: rgba(239, 68, 68, 0.18);
+      border-color: rgba(239, 68, 68, 0.4);
+      color: #fca5a5;
+    }
+    .mini-btn.accent {
+      background: rgba(var(--accent), 0.18);
+      border-color: rgba(var(--accent), 0.4);
+      color: #ffffff;
+    }
+
+    /* --- PAGE 3: AUDIO MIXER & SPECTRUM (CAT. B) --- */
+    .spectrum-box {
+      height: 68px;
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 4px;
+      padding: 8px 10px;
+      border-radius: 12px;
+      background: rgba(0, 0, 0, 0.35);
+      border: 1px solid var(--line);
+    }
+    .spec-bar {
+      flex: 1;
+      height: 8%;
+      min-height: 4px;
+      border-radius: 3px 3px 0 0;
+      background: linear-gradient(180deg, #38bdf8, rgb(var(--accent)));
+      transition: height 0.18s ease;
+    }
+
+    .mixer-row {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      padding: 8px 10px;
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.035);
+      border: 1px solid var(--line);
+    }
+    .mixer-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: 12px;
+    }
+
+    /* --- PAGE 4: WINDOWS, DISPLAY & POWER (CAT. D) --- */
+    .snap-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 6px;
+    }
+    .snap-btn {
+      padding: 8px 6px;
+      border-radius: 11px;
+      background: rgba(255, 255, 255, 0.045);
+      border: 1px solid var(--line);
+      font-size: 11px;
+      font-weight: 600;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 3px;
+    }
+    .snap-btn:active {
+      transform: scale(0.95);
+      background: rgba(var(--accent), 0.2);
+    }
+
+    .power-grid {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 6px;
+    }
+
+    /* --- Modals --- */
     .modal-backdrop {
       position: fixed;
       inset: 0;
       z-index: 45;
-      background: rgba(0, 0, 0, 0.78);
+      background: rgba(0, 0, 0, 0.8);
       backdrop-filter: blur(8px);
       display: none;
       align-items: center;
       justify-content: center;
-      padding: 16px;
+      padding: 14px;
     }
     .modal-backdrop.open {
       display: flex;
     }
     .modal-card {
-      width: min(480px, 94vw);
-      max-height: 88vh;
+      width: min(500px, 94vw);
+      max-height: 90vh;
       overflow-y: auto;
       background: #0d1016;
       border: 1px solid rgba(255, 255, 255, 0.12);
       border-radius: 20px;
-      padding: 18px;
+      padding: 16px;
       display: flex;
       flex-direction: column;
-      gap: 12px;
+      gap: 10px;
       box-shadow: 0 18px 50px rgba(0, 0, 0, 0.75);
     }
     .modal-head {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      font-size: 16px;
+      font-size: 15px;
       font-weight: 700;
     }
     .close-btn {
       padding: 4px 10px;
       border-radius: 8px;
       background: rgba(255, 255, 255, 0.08);
-      font-size: 13px;
+      font-size: 12.5px;
     }
     .dev-list {
       display: flex;
       flex-direction: column;
-      gap: 8px;
+      gap: 7px;
     }
     .dev-item {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 10px 14px;
+      padding: 9px 12px;
       border-radius: 12px;
       background: rgba(255, 255, 255, 0.045);
       border: 1px solid var(--line);
@@ -451,12 +707,12 @@
       background: rgba(34, 197, 94, 0.1);
     }
     .action-btn {
-      padding: 9px 14px;
+      padding: 9px 13px;
       border-radius: 11px;
       background: rgba(45, 212, 191, 0.2);
       border: 1px solid rgba(45, 212, 191, 0.4);
       color: #eef2f6;
-      font-size: 13px;
+      font-size: 12.5px;
       font-weight: 600;
       text-align: center;
     }
@@ -466,13 +722,13 @@
     }
     .text-input {
       flex: 1;
-      padding: 9px 12px;
+      padding: 8px 11px;
       border-radius: 10px;
       border: 1px solid var(--line);
       background: #06080b;
       color: var(--text);
       font: inherit;
-      font-size: 14px;
+      font-size: 13.5px;
     }
     .opt-group {
       display: flex;
@@ -480,11 +736,11 @@
       flex-wrap: wrap;
     }
     .opt-chip {
-      padding: 6px 12px;
+      padding: 5px 11px;
       border-radius: 9px;
       background: rgba(255, 255, 255, 0.06);
       border: 1px solid var(--line);
-      font-size: 12.5px;
+      font-size: 12px;
     }
     .opt-chip.on {
       background: rgba(45, 212, 191, 0.22);
@@ -506,14 +762,20 @@
     </div>
   </div>
 
-  <!-- Griglia Principale Soggetta a Pixel Shift Orbitale -->
-  <main id="mainGrid">
-    <!-- LATO SINISTRO: Stato, Orologio e Meteo -->
-    <section class="left-col">
-      <div class="top-bar">
+  <!-- Contenitore Principale Soggetto a Pixel Shift Orbitale -->
+  <div id="appShell">
+
+    <!-- BARRA SUPERIORE: STATO & TAB DI NAVIGAZIONE -->
+    <header class="header-bar">
+      <div class="status-pills">
         <button id="btPill" class="pill-btn" onclick="openBtModal()">
           <span id="btDot" class="dot"></span>
-          <span id="btLabel">Bluetooth HID</span>
+          <span id="btLabel">BT HID</span>
+        </button>
+
+        <button id="bridgePill" class="pill-btn" onclick="openBridgeModal()">
+          <span id="bridgeDot" class="dot"></span>
+          <span id="bridgeLabel">Bridge PS1: Attesa</span>
         </button>
 
         <button class="pill-btn" onclick="openOledModal()">
@@ -523,89 +785,276 @@
         </button>
       </div>
 
-      <div class="clock-wrap sub-shift">
-        <div class="clock-main">
-          <span id="hh">--</span><span class="colon">:</span><span id="mm">--</span>
-          <span id="ss" class="sec">00</span>
-        </div>
-        <div id="dateStr" class="date-line">caricamento...</div>
-      </div>
+      <nav class="nav-tabs">
+        <button class="nav-tab active" onclick="switchPage(0)">🏠 Home</button>
+        <button class="nav-tab" onclick="switchPage(1)">📊 Hardware</button>
+        <button class="nav-tab" onclick="switchPage(2)">🎚️ Mixer</button>
+        <button class="nav-tab" onclick="switchPage(3)">🪟 Finestre</button>
+      </nav>
+    </header>
 
-      <div class="wx-card" onclick="openWxModal()">
-        <div class="wx-left">
-          <span id="wxIcon" class="wx-icon">⛅</span>
-          <div class="wx-info">
-            <div class="wx-row1">
-              <span id="wxTemp" class="wx-temp">--°</span>
-              <span id="wxDesc" class="wx-desc">Meteo locale</span>
+    <!-- CONTENITORE DELLE 4 PAGINE -->
+    <div class="pages-wrap">
+
+      <!-- ================= PAGINA 0: HOME & MEDIA ================= -->
+      <section class="page-view active" id="page0">
+        <div class="col-pane">
+          <div class="clock-wrap sub-shift">
+            <div class="clock-main">
+              <span id="hh">--</span><span class="colon">:</span><span id="mm">--</span>
+              <span id="ss" class="sec">00</span>
             </div>
-            <div id="wxMeta" class="wx-meta">Tocca per impostare la città</div>
+            <div id="dateStr" class="date-line">caricamento...</div>
+          </div>
+
+          <div class="now-playing-bar" onclick="switchPage(2)">
+            <div class="np-meta">
+              <div id="homeNpTitle" class="np-title">🎵 Nessun brano rilevato dal Bridge</div>
+              <div id="homeNpSub" class="np-sub">I tasti multimediali Bluetooth HID sono sempre attivi</div>
+            </div>
+            <span id="homeCpuBadge" style="font-size:11px; color:rgb(var(--accent)); font-weight:700; white-space:nowrap;">PC --%</span>
+          </div>
+
+          <div class="wx-card" onclick="openWxModal()">
+            <div class="wx-left">
+              <span id="wxIcon" class="wx-icon">⛅</span>
+              <div>
+                <div style="display:flex; align-items:baseline; gap:7px;">
+                  <span id="wxTemp" class="wx-temp">--°</span>
+                  <span id="wxDesc" class="wx-desc">Meteo locale</span>
+                </div>
+                <div id="wxMeta" class="wx-meta">Tocca per impostare la città</div>
+              </div>
+            </div>
+            <div id="wxHourly" class="wx-hourly"></div>
           </div>
         </div>
-        <div id="wxHourly" class="wx-hourly"></div>
-      </div>
-    </section>
 
-    <!-- LATO DESTRO: Controlli Multimediali e Volume -->
-    <section class="right-col">
-      <div class="col-header">
-        <span class="col-title">Controlli Media &amp; Audio</span>
-        <span id="hidFeedback" class="col-feedback">Inviato</span>
-      </div>
+        <div class="col-pane">
+          <div class="sec-head" style="margin-bottom:0;">
+            <span>Controlli Media &amp; Volume (Bluetooth HID + Bridge)</span>
+            <span id="hidFeedback" style="color:rgb(var(--accent));">Pronto</span>
+          </div>
 
-      <div class="media-grid">
-        <!-- Precedente (0x00B6) -->
-        <button class="hid-key" style="--k: 148, 163, 184;" onclick="triggerMedia(0x00B6, 'Precedente', this)">
-          <svg class="sub-shift" viewBox="0 0 24 24"><path d="M6 6h2v12H6zm3.5 6 8.5 6V6z"/></svg>
-          <span>Precedente</span>
-        </button>
+          <div class="media-grid">
+            <button class="hid-key" style="--k: 148, 163, 184;" onclick="triggerMedia(0x00B6, 'Precedente', this)">
+              <svg class="sub-shift" viewBox="0 0 24 24"><path d="M6 6h2v12H6zm3.5 6 8.5 6V6z"/></svg>
+              <span>Precedente</span>
+            </button>
 
-        <!-- Play / Pausa (0x00CD) -->
-        <button class="hid-key play-btn" onclick="triggerMedia(0x00CD, 'Play / Pausa', this)">
-          <svg class="sub-shift" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
-          <span>Play / Pausa</span>
-        </button>
+            <button class="hid-key play-btn" onclick="triggerMedia(0x00CD, 'Play / Pausa', this)">
+              <svg class="sub-shift" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+              <span>Play / Pausa</span>
+            </button>
 
-        <!-- Successiva (0x00B5) -->
-        <button class="hid-key" style="--k: 148, 163, 184;" onclick="triggerMedia(0x00B5, 'Successiva', this)">
-          <svg class="sub-shift" viewBox="0 0 24 24"><path d="m6 18 8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>
-          <span>Successiva</span>
-        </button>
+            <button class="hid-key" style="--k: 148, 163, 184;" onclick="triggerMedia(0x00B5, 'Successiva', this)">
+              <svg class="sub-shift" viewBox="0 0 24 24"><path d="m6 18 8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>
+              <span>Successiva</span>
+            </button>
 
-        <!-- Volume Giù (0x00EA) -->
-        <button class="hid-key" style="--k: 56, 189, 248;"
-          onpointerdown="startRepeatMedia(0x00EA, 'Volume −', this)"
-          onpointerup="stopRepeatMedia()"
-          onpointerleave="stopRepeatMedia()"
-          onpointercancel="stopRepeatMedia()">
-          <svg class="sub-shift" viewBox="0 0 24 24"><path d="M18.5 12c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM5 9v6h4l5 5V4L9 9H5z"/></svg>
-          <span>Volume −</span>
-        </button>
+            <button class="hid-key" style="--k: 56, 189, 248;"
+              onpointerdown="startRepeatMedia(0x00EA, 'Volume −', this)"
+              onpointerup="stopRepeatMedia()" onpointerleave="stopRepeatMedia()" onpointercancel="stopRepeatMedia()">
+              <svg class="sub-shift" viewBox="0 0 24 24"><path d="M18.5 12c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM5 9v6h4l5 5V4L9 9H5z"/></svg>
+              <span>Volume −</span>
+            </button>
 
-        <!-- Mute (0x00E2) -->
-        <button class="hid-key" style="--k: 244, 63, 94;" onclick="triggerMedia(0x00E2, 'Mute Audio', this)">
-          <svg class="sub-shift" viewBox="0 0 24 24"><path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3 3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4 9.91 6.09 12 8.18V4z"/></svg>
-          <span>Mute</span>
-        </button>
+            <button class="hid-key" style="--k: 244, 63, 94;" onclick="triggerMedia(0x00E2, 'Mute Audio', this)">
+              <svg class="sub-shift" viewBox="0 0 24 24"><path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3 3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4 9.91 6.09 12 8.18V4z"/></svg>
+              <span>Mute</span>
+            </button>
 
-        <!-- Volume Su (0x00E9) -->
-        <button class="hid-key" style="--k: 56, 189, 248;"
-          onpointerdown="startRepeatMedia(0x00E9, 'Volume +', this)"
-          onpointerup="stopRepeatMedia()"
-          onpointerleave="stopRepeatMedia()"
-          onpointercancel="stopRepeatMedia()">
-          <svg class="sub-shift" viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>
-          <span>Volume +</span>
-        </button>
-      </div>
-    </section>
-  </main>
+            <button class="hid-key" style="--k: 56, 189, 248;"
+              onpointerdown="startRepeatMedia(0x00E9, 'Volume +', this)"
+              onpointerup="stopRepeatMedia()" onpointerleave="stopRepeatMedia()" onpointercancel="stopRepeatMedia()">
+              <svg class="sub-shift" viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>
+              <span>Volume +</span>
+            </button>
+          </div>
+
+          <div class="vol-strip">
+            <span style="font-size:12px; font-weight:600; min-width:58px;">🔊 <span id="homeVolLbl">--%</span></span>
+            <input id="homeVolSlider" class="range-slider" type="range" min="0" max="100" value="50" oninput="onMasterVolInput(this.value)" />
+            <div style="width:48px; height:6px; background:rgba(255,255,255,0.1); border-radius:99px; overflow:hidden;">
+              <div id="homeVuFill" style="height:100%; width:0%; background:var(--ok); transition:width 0.15s;"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= PAGINA 1: HARDWARE & TASK MANAGER (CAT. A) ================= -->
+      <section class="page-view" id="page1">
+        <div class="col-pane">
+          <div class="hw-gauges">
+            <div class="gauge-card">
+              <div class="g-top"><span class="g-lbl">CPU</span><span id="hwCpuVal" class="g-val">--%</span></div>
+              <div class="bar-track"><div id="hwCpuBar" class="bar-fill"></div></div>
+              <div id="hwCpuSub" class="g-sub">Processore PC</div>
+            </div>
+            <div class="gauge-card">
+              <div class="g-top"><span class="g-lbl">RAM</span><span id="hwRamVal" class="g-val">--%</span></div>
+              <div class="bar-track"><div id="hwRamBar" class="bar-fill" style="background:#38bdf8;"></div></div>
+              <div id="hwRamSub" class="g-sub">-- / -- GB</div>
+            </div>
+            <div class="gauge-card">
+              <div class="g-top"><span class="g-lbl">GPU</span><span id="hwGpuVal" class="g-val">--%</span></div>
+              <div class="bar-track"><div id="hwGpuBar" class="bar-fill" style="background:#a855f7;"></div></div>
+              <div id="hwGpuSub" class="g-sub">Motore 3D</div>
+            </div>
+          </div>
+
+          <div class="card-box">
+            <div class="sec-head">
+              <span>Storico Carico CPU / RAM (60s)</span>
+              <span id="hwUptimeLbl">Uptime: --</span>
+            </div>
+            <canvas id="hwSparkCanvas" class="spark-canvas" width="360" height="54"></canvas>
+          </div>
+
+          <div class="card-box" style="flex:1; display:flex; flex-direction:column; justify-content:space-between; gap:6px;">
+            <div class="sec-head" style="margin-bottom:2px;">
+              <span>Dischi, Rete &amp; Batterie Bluetooth</span>
+              <span id="hwNetLbl" style="color:#38bdf8;">↓ 0 KB/s · ↑ 0 KB/s</span>
+            </div>
+            <div id="hwDisksBox" style="display:flex; flex-direction:column; gap:5px; font-size:11.5px;">
+              <div style="color:var(--muted);">Avvia <b>AVVIA_BRIDGE_PC.bat</b> sul PC per ricevere la telemetria in tempo reale.</div>
+            </div>
+            <div id="hwBtBatBox" style="display:flex; gap:6px; flex-wrap:wrap; margin-top:2px;"></div>
+          </div>
+        </div>
+
+        <div class="col-pane">
+          <div class="card-box" style="flex:1; display:flex; flex-direction:column; min-height:0;">
+            <div class="sec-head">
+              <span>Task Manager · Top Processi PC</span>
+              <div style="display:flex; gap:4px;">
+                <button id="sortCpuBtn" class="mini-btn accent" onclick="setProcSort('cpu')">Ordina CPU</button>
+                <button id="sortRamBtn" class="mini-btn" onclick="setProcSort('ram')">Ordina RAM</button>
+              </div>
+            </div>
+            <div id="procListBox" class="scroll-list">
+              <div style="font-size:12px; color:var(--muted); padding:8px;">In attesa di connessione da <b>PC-Companion-Bridge.ps1</b>...</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= PAGINA 2: MIXER AUDIO & SPETTRO (CAT. B) ================= -->
+      <section class="page-view" id="page2">
+        <div class="col-pane">
+          <div class="card-box">
+            <div class="sec-head">
+              <span>Spettro &amp; Livello di Picco CoreAudio</span>
+              <span id="mixPeakLbl">Picco: 0%</span>
+            </div>
+            <div id="spectrumBars" class="spectrum-box"></div>
+          </div>
+
+          <div class="card-box">
+            <div class="sec-head">
+              <span>Master Volume PC</span>
+              <span id="mixMasterLbl">50%</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <input id="mixMasterSlider" class="range-slider" type="range" min="0" max="100" value="50" oninput="onMasterVolInput(this.value)" />
+              <button id="panicMuteBtn" class="mini-btn danger" onclick="toggleMasterMute()">🔇 Mute</button>
+            </div>
+          </div>
+
+          <div class="card-box" style="flex:1; display:flex; flex-direction:column; min-height:0;">
+            <div class="sec-head">
+              <span>Uscita Audio Windows</span>
+              <span id="activeOutLbl" style="color:rgb(var(--accent));">Predefinita</span>
+            </div>
+            <div id="audioOutList" class="scroll-list">
+              <div style="font-size:11.5px; color:var(--muted);">Elenco uscite audio disponibile quando il Bridge è attivo.</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-pane">
+          <div class="card-box" style="flex:1; display:flex; flex-direction:column; min-height:0;">
+            <div class="sec-head">
+              <span>Mixer Volume per Singola Applicazione</span>
+              <span id="appCountLbl">0 app attive</span>
+            </div>
+            <div id="appMixerBox" class="scroll-list">
+              <div style="font-size:12px; color:var(--muted); padding:8px;">Avvia lo script Bridge sul PC per regolare separatamente il volume di Chrome, Spotify, Teams, VLC, ecc.</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= PAGINA 3: FINESTRE, MONITOR & ALIMENTAZIONE (CAT. D) ================= -->
+      <section class="page-view" id="page3">
+        <div class="col-pane">
+          <div class="card-box">
+            <div class="sec-head">
+              <span>Snap Finestre &amp; Desktop Virtuali (HID / Bridge)</span>
+            </div>
+            <div class="snap-grid">
+              <button class="snap-btn" onclick="sendWinSnap('left')"><span>⬅️</span><span>Snap SX</span></button>
+              <button class="snap-btn" onclick="sendWinSnap('right')"><span>➡️</span><span>Snap DX</span></button>
+              <button class="snap-btn" onclick="sendWinSnap('max')"><span>⬆️</span><span>Massimizza</span></button>
+              <button class="snap-btn" onclick="sendWinSnap('min')"><span>⬇️</span><span>Minimizza</span></button>
+              <button class="snap-btn" onclick="sendWinSnap('desktop')"><span>🖥️</span><span>Desktop</span></button>
+              <button class="snap-btn" onclick="sendWinSnap('taskview')"><span>🗂️</span><span>Task View</span></button>
+              <button class="snap-btn" onclick="sendWinSnap('vprev')"><span>⏪</span><span>Desk Prec</span></button>
+              <button class="snap-btn" onclick="sendWinSnap('vnext')"><span>⏩</span><span>Desk Succ</span></button>
+            </div>
+          </div>
+
+          <div class="card-box">
+            <div class="sec-head">
+              <span>Luminosità Monitor PC &amp; Profilo Alimentazione</span>
+              <span id="pcBrightLbl">--%</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+              <span style="font-size:12px;">🔆</span>
+              <input id="pcBrightSlider" class="range-slider" type="range" min="0" max="100" value="80" onchange="sendBridge({cmd:'setBrightness', value:Number(this.value)})" oninput="document.getElementById('pcBrightLbl').textContent=this.value+'%'" />
+            </div>
+            <div style="display:flex; gap:6px;">
+              <button id="planSaver" class="mini-btn" style="flex:1;" onclick="setPowerPlan('saver')">🌱 Risparmio</button>
+              <button id="planBal" class="mini-btn accent" style="flex:1;" onclick="setPowerPlan('balanced')">⚖️ Bilanciato</button>
+              <button id="planHigh" class="mini-btn" style="flex:1;" onclick="setPowerPlan('high')">🚀 Prestazioni</button>
+            </div>
+          </div>
+
+          <div class="card-box">
+            <div class="sec-head">
+              <span>Controlli Sistema &amp; Alimentazione PC</span>
+            </div>
+            <div class="power-grid">
+              <button class="snap-btn" onclick="lockPcNow()"><span>🔒</span><span>Blocca</span></button>
+              <button class="snap-btn" onclick="sendBridge({cmd:'monitorOff'})"><span>🌑</span><span>Schermi Off</span></button>
+              <button class="snap-btn" onclick="confirmPower('sleep', 'Sospendere il PC?')"><span>💤</span><span>Sospendi</span></button>
+              <button class="snap-btn" onclick="confirmPower('restart', 'Riavviare il PC?')"><span>🔄</span><span>Riavvia</span></button>
+              <button class="snap-btn" style="border-color:rgba(239,68,68,0.4); color:#fca5a5;" onclick="confirmPower('shutdown', 'Arrestare il PC?')"><span>⏻</span><span>Arresta</span></button>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-pane">
+          <div class="card-box" style="flex:1; display:flex; flex-direction:column; min-height:0;">
+            <div class="sec-head">
+              <span>Finestre Attive sul Desktop (Tocca per portare in primo piano)</span>
+              <span id="winCountLbl">0 finestre</span>
+            </div>
+            <div id="winListBox" class="scroll-list">
+              <div style="font-size:12px; color:var(--muted); padding:8px;">Elenco finestre attive disponibile quando il Bridge PowerShell è in esecuzione.</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </div>
+  </div>
 
   <!-- Modal Connessione Bluetooth HID -->
   <div id="btModal" class="modal-backdrop" onclick="if(event.target===this)closeModals()">
     <div class="modal-card">
       <div class="modal-head">
-        <span>Connessione Bluetooth HID (v1.0.1)</span>
+        <span>Connessione Bluetooth HID (v1.1.0)</span>
         <button class="close-btn" onclick="closeModals()">Chiudi</button>
       </div>
       <div id="btDiagBox" style="padding:10px 12px; border-radius:12px; background:rgba(255,255,255,0.04); border:1px solid var(--line); font-size:12px; line-height:1.45;">
@@ -613,11 +1062,32 @@
       </div>
       <div id="btModalBody" class="dev-list"></div>
       <div style="display:flex; flex-direction:column; gap:8px; margin-top:4px;">
-        <button class="action-btn" onclick="makePhoneDiscoverable()">📡 1. Rendi Pixel visibile al PC (5 min)</button>
+        <button class="action-btn" onclick="makePhoneDiscoverable()">📡 1. Rendi visibile come 'PC-Companion' (5 min)</button>
         <button class="action-btn" style="background:rgba(255,255,255,0.07); border-color:var(--line);" onclick="openAndroidBtSettings()">⚙️ Impostazioni Bluetooth Android</button>
       </div>
       <div style="font-size:11.5px; color:var(--muted); line-height:1.4;">
-        <b>Importante per Windows:</b> Se il Pixel 6a era già associato al PC prima di installare l'app, rimuovilo una volta da Windows e dal Pixel, poi tocca <b>"Rendi Pixel visibile al PC"</b> qui sopra e avvia <i>Aggiungi dispositivo Bluetooth</i> dal PC mentre questa schermata è aperta.
+        L'app imposta automaticamente il nome Bluetooth in <b>"PC-Companion"</b>. Se Windows mostra ancora il vecchio nome in cache, rimuovi il dispositivo da Windows e riassocialo.
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Stato Bridge PowerShell -->
+  <div id="bridgeModal" class="modal-backdrop" onclick="if(event.target===this)closeModals()">
+    <div class="modal-card">
+      <div class="modal-head">
+        <span>⚡ Bridge Telemetria &amp; Mixer (Bluetooth RFCOMM)</span>
+        <button class="close-btn" onclick="closeModals()">Chiudi</button>
+      </div>
+      <div id="bridgeModalStatus" style="padding:10px 12px; border-radius:12px; background:rgba(255,255,255,0.04); border:1px solid var(--line); font-size:12.5px;">
+        Stato: In attesa di connessione dal PC...
+      </div>
+      <div style="font-size:12px; color:var(--muted); line-height:1.5;">
+        Per attivare i widget di <b>Telemetria Hardware (Cat. A)</b>, <b>Mixer Audio per App (Cat. B)</b> e <b>Gestione Finestre (Cat. D)</b> senza ADB né permessi di amministratore:
+        <ol style="margin:8px 0 0 18px;">
+          <li>Assicurati che il Pixel 6a sia associato via Bluetooth al PC.</li>
+          <li>Sul PC, fai doppio clic su <b><code>AVVIA_BRIDGE_PC.bat</code></b> (nella cartella <code>PhoneBox</code>).</li>
+          <li>Lo script PowerShell si collegherà automaticamente via Bluetooth RFCOMM a questa app.</li>
+        </ol>
       </div>
     </div>
   </div>
@@ -629,29 +1099,22 @@
         <span>🛡️ Protezione AMOLED (Pixel 6a)</span>
         <button class="close-btn" onclick="closeModals()">Chiudi</button>
       </div>
-
-      <div style="font-size:12.5px; color:var(--muted);">
-        Il <b>Pixel Shift Orbitale</b> (±3px ogni 60s) è sempre attivo per evitare che testi e bordi insistano sugli stessi subpixel OLED.
+      <div style="font-size:12px; color:var(--muted);">
+        Il <b>Pixel Shift Orbitale</b> (±3px ogni 60s) è sempre attivo su tutte le 4 pagine.
       </div>
-
       <div>
         <div style="font-size:12px; color:var(--muted); margin-bottom:6px;">Auto-Dimming (riduce luminosità al 2% dopo inattività):</div>
         <div id="dimChips" class="opt-group"></div>
       </div>
-
       <div>
         <div style="font-size:12px; color:var(--muted); margin-bottom:6px;">Screensaver OLED Floating Clock dopo:</div>
         <div id="saverChips" class="opt-group"></div>
       </div>
-
       <div>
         <div style="font-size:12px; color:var(--muted); margin-bottom:6px;">Tema Sfondo:</div>
         <div id="themeChips" class="opt-group"></div>
       </div>
-
-      <div style="display:flex; gap:8px; margin-top:4px;">
-        <button class="action-btn" style="flex:1;" onclick="closeModals(); enterSaver();">Testa Screensaver Ora</button>
-      </div>
+      <button class="action-btn" onclick="closeModals(); enterSaver();">Testa Screensaver Ora</button>
     </div>
   </div>
 
@@ -673,6 +1136,29 @@
   <script>
     const A = window.Android || null;
     const pad = (n) => String(n).padStart(2, '0');
+
+    // Inizializza barre dello spettro audio
+    const specContainer = document.getElementById('spectrumBars');
+    const SPEC_COUNT = 20;
+    for (let i = 0; i < SPEC_COUNT; i++) {
+      const b = document.createElement('div');
+      b.className = 'spec-bar';
+      specContainer.appendChild(b);
+    }
+
+    // --- Navigazione Pagine ---
+    let currentPage = 0;
+    function switchPage(idx) {
+      haptic();
+      currentPage = idx;
+      document.querySelectorAll('.page-view').forEach((el, i) => {
+        el.classList.toggle('active', i === idx);
+      });
+      document.querySelectorAll('.nav-tab').forEach((el, i) => {
+        el.classList.toggle('active', i === idx);
+      });
+      if (idx === 1) drawSparkline();
+    }
 
     // --- Configurazione persistente ---
     const defaultCfg = {
@@ -732,7 +1218,6 @@
       root.setProperty('--shift-y', y + 'px');
       root.setProperty('--sub-x', Math.round(sx * 0.65) + 'px');
       root.setProperty('--sub-y', Math.round(sy * 0.65) + 'px');
-
       if (isSaver) moveSaverClock();
     }
     setInterval(stepPixelShift, 60000);
@@ -774,7 +1259,6 @@
       const idleMs = Date.now() - lastActivity;
       const saverMs = (cfg.saverMin || 0) * 60000;
       const dimMs = (cfg.idleDimMin || 0) * 60000;
-
       if (saverMs > 0 && idleMs >= saverMs) {
         if (!isSaver) enterSaver();
       } else if (dimMs > 0 && idleMs >= dimMs) {
@@ -782,7 +1266,6 @@
       }
     }
 
-    // Qualsiasi tocco su dimLayer o saverLayer risveglia senza premere i pulsanti sotto
     ['dimLayer', 'saverLayer'].forEach((id) => {
       document.getElementById(id).addEventListener('pointerdown', (e) => {
         e.stopPropagation();
@@ -796,7 +1279,6 @@
       lastActivity = Date.now();
     }, { passive: true });
 
-    // Sensore di prossimità e luce dal Pixel 6a
     let darkSince = 0;
     window.onAndroidSensor = (kind, value) => {
       if (kind === 'proximity' && value === true && (isDimmed || isSaver)) {
@@ -826,7 +1308,7 @@
     }
     setInterval(updateBattery, 20000);
 
-    // --- Bluetooth HID Stato & Invio Comandi ---
+    // --- Bluetooth HID Stato & Comandi ---
     let btState = { state: 'disconnected', permissionsGranted: true, bondedDevices: [] };
 
     function renderBtStatus(jsonStr) {
@@ -839,20 +1321,20 @@
       dot.className = 'dot';
 
       if (!btState.permissionsGranted) {
-        dot.classList.add('warn');
+        dot.classList.add('wait');
         lbl.textContent = 'Autorizza BT';
       } else if (!btState.enabled) {
         dot.classList.add('off');
         lbl.textContent = 'BT Spento';
       } else if (btState.state === 'connected') {
         dot.classList.add('on');
-        lbl.textContent = `BT · ${btState.hostName || 'PC Connesso'}`;
+        lbl.textContent = `HID · ${btState.hostName || 'PC'}`;
       } else if (btState.state === 'connecting') {
         dot.classList.add('wait');
-        lbl.textContent = 'Connessione...';
+        lbl.textContent = 'HID...';
       } else {
         dot.classList.add('off');
-        lbl.textContent = 'Connetti PC';
+        lbl.textContent = 'Connetti HID';
       }
 
       if (document.getElementById('btModal').classList.contains('open')) {
@@ -869,10 +1351,10 @@
     let fbTimer = null;
     function showFeedback(text) {
       const el = document.getElementById('hidFeedback');
+      if (!el) return;
       el.textContent = text;
-      el.classList.add('show');
       clearTimeout(fbTimer);
-      fbTimer = setTimeout(() => el.classList.remove('show'), 1400);
+      fbTimer = setTimeout(() => { el.textContent = 'Pronto'; }, 1500);
     }
 
     function triggerMedia(usageCode, label, btnEl) {
@@ -883,7 +1365,7 @@
       }
       if (A && A.sendMedia) {
         const ok = A.sendMedia(usageCode);
-        showFeedback(ok ? `✓ ${label}` : 'PC non connesso');
+        showFeedback(ok ? `✓ ${label}` : 'HID non connesso');
         if (!ok && btState.state !== 'connected') openBtModal();
       } else {
         showFeedback(`Demo: ${label}`);
@@ -906,9 +1388,304 @@
       clearInterval(repeatInterval);
     }
 
+    // --- Bridge PowerShell (Bluetooth RFCOMM) ---
+    let bridgeActive = false;
+    let bridgeHost = '';
+    let lastBridgeData = null;
+    let procSortBy = 'cpu';
+    const cpuHist = new Array(40).fill(0);
+    const ramHist = new Array(40).fill(0);
+
+    window.onPcBridgeStatus = (connected, host) => {
+      bridgeActive = !!connected;
+      bridgeHost = host || 'PC';
+      const dot = document.getElementById('bridgeDot');
+      const lbl = document.getElementById('bridgeLabel');
+      dot.className = 'dot ' + (bridgeActive ? 'on' : '');
+      lbl.textContent = bridgeActive ? `⚡ Bridge: ${bridgeHost}` : 'Bridge PS1: Attesa';
+      const st = document.getElementById('bridgeModalStatus');
+      if (st) {
+        st.innerHTML = bridgeActive
+          ? `<span style="color:var(--ok);font-weight:700;">● Connesso via Bluetooth RFCOMM a ${bridgeHost}</span>`
+          : `<span style="color:var(--warn);font-weight:700;">● In attesa di AVVIA_BRIDGE_PC.bat sul PC</span>`;
+      }
+    };
+
+    function sendBridge(obj) {
+      haptic();
+      if (A && A.sendBridgeCmd) {
+        return A.sendBridgeCmd(JSON.stringify(obj));
+      }
+      return false;
+    }
+
+    let volDebounce = null;
+    function onMasterVolInput(val) {
+      const v = Number(val);
+      document.getElementById('homeVolLbl').textContent = v + '%';
+      document.getElementById('mixMasterLbl').textContent = v + '%';
+      document.getElementById('homeVolSlider').value = v;
+      document.getElementById('mixMasterSlider').value = v;
+      clearTimeout(volDebounce);
+      volDebounce = setTimeout(() => {
+        sendBridge({ cmd: 'setMasterVolume', value: v });
+      }, 60);
+    }
+
+    function toggleMasterMute() {
+      sendBridge({ cmd: 'toggleMasterMute' });
+    }
+
+    function setProcSort(mode) {
+      procSortBy = mode;
+      document.getElementById('sortCpuBtn').className = 'mini-btn' + (mode === 'cpu' ? ' accent' : '');
+      document.getElementById('sortRamBtn').className = 'mini-btn' + (mode === 'ram' ? ' accent' : '');
+      if (lastBridgeData) renderProcList(lastBridgeData.procs || []);
+    }
+
+    window.onPcBridgeData = (jsonLine) => {
+      try {
+        const d = typeof jsonLine === 'string' ? JSON.parse(jsonLine) : jsonLine;
+        lastBridgeData = d;
+        if (!bridgeActive) window.onPcBridgeStatus(true, d.host || 'PC');
+        renderTelemetry(d);
+      } catch (_) {}
+    };
+
+    function renderTelemetry(d) {
+      // CPU / RAM / GPU
+      const cpu = Math.round(d.cpu || 0);
+      const ramPct = Math.round(d.ramPct || 0);
+      const gpu = Math.round(d.gpu || 0);
+
+      document.getElementById('homeCpuBadge').textContent = `CPU ${cpu}% · RAM ${ramPct}%`;
+      document.getElementById('hwCpuVal').textContent = cpu + '%';
+      document.getElementById('hwCpuBar').style.width = cpu + '%';
+      document.getElementById('hwRamVal').textContent = ramPct + '%';
+      document.getElementById('hwRamBar').style.width = ramPct + '%';
+      if (d.ramUsedGb !== undefined) {
+        document.getElementById('hwRamSub').textContent = `${d.ramUsedGb} / ${d.ramTotalGb} GB`;
+      }
+      document.getElementById('hwGpuVal').textContent = gpu + '%';
+      document.getElementById('hwGpuBar').style.width = gpu + '%';
+      if (d.uptime) {
+        document.getElementById('hwUptimeLbl').textContent = `Uptime: ${d.uptime}`;
+      }
+      if (d.netDownKbs !== undefined) {
+        document.getElementById('hwNetLbl').textContent = `↓ ${d.netDownKbs} KB/s · ↑ ${d.netUpKbs || 0} KB/s`;
+      }
+
+      cpuHist.push(cpu); cpuHist.shift();
+      ramHist.push(ramPct); ramHist.shift();
+      if (currentPage === 1) drawSparkline();
+
+      // Dischi
+      if (Array.isArray(d.disks)) {
+        const dBox = document.getElementById('hwDisksBox');
+        dBox.innerHTML = d.disks.map((dk) => `
+          <div>
+            <div style="display:flex; justify-content:space-between; margin-bottom:2px;">
+              <span>💾 Disco ${dk.name}</span>
+              <span style="color:var(--muted);">${dk.usedGb}/${dk.totalGb} GB (${dk.pct}%)</span>
+            </div>
+            <div class="bar-track"><div class="bar-fill" style="width:${dk.pct}%;"></div></div>
+          </div>
+        `).join('');
+      }
+
+      // Batterie Bluetooth PC
+      if (Array.isArray(d.btBatteries)) {
+        const bBox = document.getElementById('hwBtBatBox');
+        bBox.innerHTML = d.btBatteries.map((b) => `
+          <span class="mini-btn">🎧 ${b.name}: <b>${b.battery}%</b></span>
+        `).join('');
+      }
+
+      // Top Processi
+      if (Array.isArray(d.procs)) {
+        renderProcList(d.procs);
+      }
+
+      // Now Playing & Master Volume
+      if (d.mediaTitle) {
+        document.getElementById('homeNpTitle').textContent = `🎵 ${d.mediaTitle}`;
+        document.getElementById('homeNpSub').textContent = d.mediaApp ? `Riproduzione su ${d.mediaApp}` : 'Audio PC attivo';
+      } else {
+        document.getElementById('homeNpTitle').textContent = '🎵 Nessun brano multimediale in riproduzione';
+        document.getElementById('homeNpSub').textContent = `Bridge attivo su ${d.host || 'PC'}`;
+      }
+
+      if (d.vol !== undefined) {
+        const v = Math.round(d.vol);
+        document.getElementById('homeVolLbl').textContent = (d.muted ? 'MUTE ' : '') + v + '%';
+        document.getElementById('mixMasterLbl').textContent = (d.muted ? 'MUTE ' : '') + v + '%';
+        document.getElementById('homeVolSlider').value = v;
+        document.getElementById('mixMasterSlider').value = v;
+      }
+
+      // Peak & Spectrum
+      const peak = Math.round(d.peak || 0);
+      document.getElementById('homeVuFill').style.width = peak + '%';
+      document.getElementById('mixPeakLbl').textContent = `Picco: ${peak}%`;
+      const bars = specContainer.children;
+      for (let i = 0; i < bars.length; i++) {
+        const wave = peak > 1 ? Math.min(100, Math.max(6, Math.round(peak * (0.45 + 0.65 * Math.abs(Math.sin(Date.now() / 180 + i * 0.55)))))) : 5;
+        bars[i].style.height = wave + '%';
+      }
+
+      // Per-App Audio Mixer
+      if (Array.isArray(d.apps)) {
+        document.getElementById('appCountLbl').textContent = `${d.apps.length} sessioni`;
+        const mBox = document.getElementById('appMixerBox');
+        mBox.innerHTML = d.apps.map((ap) => `
+          <div class="mixer-row">
+            <div class="mixer-top">
+              <span style="font-weight:600;">${ap.name} <span style="color:var(--muted);font-weight:400;">(#${ap.pid})</span></span>
+              <div style="display:flex; align-items:center; gap:6px;">
+                <span style="font-size:11px; color:rgb(var(--accent));">${ap.vol}%</span>
+                <button class="mini-btn ${ap.muted ? 'danger' : ''}" onclick="sendBridge({cmd:'setAppMute', pid:${ap.pid}, mute:${!ap.muted}})">
+                  ${ap.muted ? '🔇' : '🔊'}
+                </button>
+              </div>
+            </div>
+            <input class="range-slider" type="range" min="0" max="100" value="${ap.vol}"
+              onchange="sendBridge({cmd:'setAppVolume', pid:${ap.pid}, value:Number(this.value)})" />
+          </div>
+        `).join('');
+      }
+
+      // Uscite Audio
+      if (Array.isArray(d.outputs)) {
+        const oBox = document.getElementById('audioOutList');
+        oBox.innerHTML = d.outputs.map((o) => `
+          <div class="list-row">
+            <div class="row-main">
+              <div class="row-title">🔈 ${o.name}</div>
+            </div>
+            <span style="font-size:11px; color:var(--ok); font-weight:600;">Attiva</span>
+          </div>
+        `).join('');
+      }
+
+      // Luminosità & Finestre Attive
+      if (d.brightness !== undefined && d.brightness >= 0) {
+        document.getElementById('pcBrightLbl').textContent = d.brightness + '%';
+        document.getElementById('pcBrightSlider').value = d.brightness;
+      }
+
+      if (Array.isArray(d.windows)) {
+        document.getElementById('winCountLbl').textContent = `${d.windows.length} finestre`;
+        const wBox = document.getElementById('winListBox');
+        wBox.innerHTML = d.windows.map((w) => `
+          <div class="list-row">
+            <div class="row-main" onclick="sendBridge({cmd:'focusWindow', hwnd:${w.hwnd}})" style="cursor:pointer;">
+              <div class="row-title">${w.title}</div>
+              <div class="row-sub">${w.proc}</div>
+            </div>
+            <button class="mini-btn accent" onclick="sendBridge({cmd:'focusWindow', hwnd:${w.hwnd}})">Attiva</button>
+            <button class="mini-btn danger" onclick="sendBridge({cmd:'closeWindow', hwnd:${w.hwnd}})">✕</button>
+          </div>
+        `).join('');
+      }
+    }
+
+    function renderProcList(procs) {
+      const box = document.getElementById('procListBox');
+      const sorted = [...procs].sort((a, b) => procSortBy === 'ram' ? (b.ramMb - a.ramMb) : (b.cpu - a.cpu));
+      box.innerHTML = sorted.map((p) => `
+        <div class="list-row">
+          <div class="row-main">
+            <div class="row-title">${p.name} <span style="font-weight:400; color:var(--muted);">(${p.pid})</span></div>
+            <div class="row-sub">CPU: <b>${p.cpu}%</b> · RAM: <b>${p.ramMb} MB</b></div>
+          </div>
+          <button class="mini-btn danger" onclick="sendBridge({cmd:'killProcess', pid:${p.pid}})">Termina</button>
+        </div>
+      `).join('');
+    }
+
+    function drawSparkline() {
+      const cv = document.getElementById('hwSparkCanvas');
+      if (!cv) return;
+      const ctx = cv.getContext('2d');
+      const w = cv.width, h = cv.height;
+      ctx.clearRect(0, 0, w, h);
+
+      // Griglia leggera
+      ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+      ctx.beginPath();
+      ctx.moveTo(0, h / 2); ctx.lineTo(w, h / 2);
+      ctx.stroke();
+
+      const drawSeries = (arr, color) => {
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        arr.forEach((v, i) => {
+          const x = (i / (arr.length - 1)) * w;
+          const y = h - (Math.min(100, Math.max(0, v)) / 100) * (h - 6) - 3;
+          if (i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        });
+        ctx.stroke();
+      };
+      drawSeries(ramHist, '#38bdf8');
+      drawSeries(cpuHist, '#2dd4bf');
+    }
+
+    // --- Azioni Finestre, Snap & Power (Cat. D) ---
+    // Usa sia il Bridge sia scorciatoie da tastiera HID nativo!
+    // Modificatori HID: Left GUI (Win) = 0x08, Left Ctrl = 0x01
+    function sendWinSnap(action) {
+      haptic();
+      if (bridgeActive) {
+        sendBridge({ cmd: 'snapWindow', action });
+        return;
+      }
+      if (!A || !A.sendKey) return;
+      switch (action) {
+        case 'left': A.sendKey(0x08, 0x50); break;     // Win + Left Arrow
+        case 'right': A.sendKey(0x08, 0x4F); break;    // Win + Right Arrow
+        case 'max': A.sendKey(0x08, 0x52); break;      // Win + Up Arrow
+        case 'min': A.sendKey(0x08, 0x51); break;      // Win + Down Arrow
+        case 'desktop': A.sendKey(0x08, 0x07); break;  // Win + D
+        case 'taskview': A.sendKey(0x08, 0x2B); break; // Win + Tab
+        case 'vprev': A.sendKey(0x09, 0x50); break;    // Ctrl + Win + Left
+        case 'vnext': A.sendKey(0x09, 0x4F); break;    // Ctrl + Win + Right
+      }
+    }
+
+    function setPowerPlan(plan) {
+      ['planSaver', 'planBal', 'planHigh'].forEach((id) => document.getElementById(id).className = 'mini-btn');
+      if (plan === 'saver') document.getElementById('planSaver').classList.add('accent');
+      if (plan === 'balanced') document.getElementById('planBal').classList.add('accent');
+      if (plan === 'high') document.getElementById('planHigh').classList.add('accent');
+      sendBridge({ cmd: 'setPowerPlan', plan });
+    }
+
+    function lockPcNow() {
+      haptic();
+      if (bridgeActive) {
+        sendBridge({ cmd: 'lockPc' });
+      } else if (A && A.sendKey) {
+        A.sendKey(0x08, 0x0F); // Win + L via HID Keyboard
+      }
+    }
+
+    function confirmPower(action, msg) {
+      haptic();
+      if (confirm(msg)) {
+        sendBridge({ cmd: 'powerAction', action });
+      }
+    }
+
     // --- Modali ---
     function closeModals() {
       document.querySelectorAll('.modal-backdrop').forEach((m) => m.classList.remove('open'));
+    }
+
+    function openBridgeModal() {
+      haptic();
+      document.getElementById('bridgeModal').classList.add('open');
     }
 
     function openBtModal() {
@@ -928,7 +1705,8 @@
           ? ' · <span style="color:#38bdf8;font-weight:700;">Visibile al PC</span>'
           : '';
         diag.innerHTML = `
-          <div>Servizio HID: ${regBadge}${discBadge}</div>
+          <div>Nome Bluetooth Locale: <b>${btState.localName || 'PC-Companion'}</b></div>
+          <div style="margin-top:2px;">Servizio HID: ${regBadge}${discBadge}</div>
           <div style="color:var(--muted);margin-top:3px;">${btState.note || ''}</div>
         `;
       }
@@ -948,9 +1726,9 @@
       const list = btState.bondedDevices || [];
       if (!list.length) {
         const msg = document.createElement('div');
-        msg.style.fontSize = '12.5px';
+        msg.style.fontSize = '12px';
         msg.style.color = 'var(--muted)';
-        msg.textContent = 'Nessun PC associato. Tocca "Rendi Pixel visibile al PC" qui sotto e poi cerca il Pixel dal menu Bluetooth del PC Windows.';
+        msg.textContent = 'Nessun PC associato. Tocca "Rendi visibile come PC-Companion" qui sotto e cerca il dispositivo dal Bluetooth di Windows.';
         box.appendChild(msg);
         return;
       }
@@ -960,8 +1738,8 @@
         row.className = 'dev-item' + (d.connected ? ' connected' : '');
         row.innerHTML = `
           <div>
-            <div style="font-weight:600; font-size:14px;">${d.name}</div>
-            <div style="font-size:11.5px; color:var(--muted);">${d.address}</div>
+            <div style="font-weight:600; font-size:13.5px;">${d.name}</div>
+            <div style="font-size:11px; color:var(--muted);">${d.address}</div>
           </div>
           <span style="font-size:12px; font-weight:600; color:${d.connected ? 'var(--ok)' : 'rgb(var(--accent))'};">
             ${d.connected ? 'Connesso (Disconnetti)' : 'Connetti HID'}
@@ -1071,9 +1849,9 @@
           const item = document.createElement('div');
           item.className = 'wx-h-item';
           item.innerHTML = `
-            <span class="wx-h-time">${d.hourly.time[idx].slice(11, 16)}</span>
+            <span style="color:var(--muted);">${d.hourly.time[idx].slice(11, 16)}</span>
             <span>${hiInfo.icon}</span>
-            <span class="wx-h-val">${Math.round(d.hourly.temperature_2m[idx])}°</span>
+            <span style="font-weight:600;">${Math.round(d.hourly.temperature_2m[idx])}°</span>
           `;
           hBox.appendChild(item);
         }
@@ -1101,8 +1879,8 @@
           btn.className = 'dev-item';
           btn.innerHTML = `
             <div>
-              <div style="font-weight:600;font-size:14px;">${loc.name}</div>
-              <div style="font-size:11.5px;color:var(--muted);">${[loc.admin1, loc.country].filter(Boolean).join(', ')}</div>
+              <div style="font-weight:600;font-size:13.5px;">${loc.name}</div>
+              <div style="font-size:11px;color:var(--muted);">${[loc.admin1, loc.country].filter(Boolean).join(', ')}</div>
             </div>
             <span style="font-size:12px;color:rgb(var(--accent));">Seleziona</span>
           `;

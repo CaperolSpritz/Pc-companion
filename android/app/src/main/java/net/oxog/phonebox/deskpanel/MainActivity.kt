@@ -35,6 +35,7 @@ class MainActivity : Activity(), SensorEventListener {
 
     private lateinit var web: WebView
     private lateinit var btHid: BluetoothHidController
+    private lateinit var rfcommServer: BluetoothRfcommServer
     private val sensors by lazy { getSystemService(Context.SENSOR_SERVICE) as SensorManager? }
     private var lastLux = -1f
     private var lastLuxAt = 0L
@@ -55,6 +56,20 @@ class MainActivity : Activity(), SensorEventListener {
             val status = btHid.statusJson()
             web.evaluateJavascript("window.onBtState && window.onBtState(${JSONObject.quote(status)})", null)
         }
+
+        rfcommServer = BluetoothRfcommServer(
+            context = this,
+            hasPermissions = { btHid.hasPermissions() },
+            onBridgeMessage = { line ->
+                web.evaluateJavascript("window.onPcBridgeData && window.onPcBridgeData(${JSONObject.quote(line)})", null)
+            },
+            onConnectionChanged = { connected, host ->
+                web.evaluateJavascript(
+                    "window.onPcBridgeStatus && window.onPcBridgeStatus($connected, ${JSONObject.quote(host)})",
+                    null
+                )
+            }
+        )
 
         web = WebView(this)
         web.setBackgroundColor(0xFF000000.toInt())
@@ -117,6 +132,7 @@ class MainActivity : Activity(), SensorEventListener {
         web.onResume()
         hideSystemUi()
         btHid.start()
+        rfcommServer.start()
         sensors?.getDefaultSensor(Sensor.TYPE_LIGHT)?.let {
             sensors?.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL)
         }
@@ -132,6 +148,7 @@ class MainActivity : Activity(), SensorEventListener {
     }
 
     override fun onDestroy() {
+        rfcommServer.stop()
         btHid.stop()
         super.onDestroy()
     }
@@ -140,6 +157,7 @@ class MainActivity : Activity(), SensorEventListener {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == BluetoothHidController.PERMISSION_REQUEST_CODE) {
             btHid.start()
+            rfcommServer.start()
         }
     }
 
@@ -235,6 +253,12 @@ class MainActivity : Activity(), SensorEventListener {
 
         @JavascriptInterface
         fun sendKey(modifier: Int, keyCode: Int): Boolean = btHid.sendKeyboardKey(modifier, keyCode)
+
+        @JavascriptInterface
+        fun sendBridgeCmd(jsonLine: String): Boolean = rfcommServer.sendCommand(jsonLine)
+
+        @JavascriptInterface
+        fun bridgeConnected(): Boolean = rfcommServer.isConnected()
     }
 
     companion object {
