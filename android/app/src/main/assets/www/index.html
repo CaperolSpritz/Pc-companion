@@ -1,0 +1,1106 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <title>PC-Companion</title>
+  <style>
+    :root {
+      --bg: #000000;
+      --card: rgba(255, 255, 255, 0.038);
+      --card-hi: rgba(255, 255, 255, 0.075);
+      --line: rgba(255, 255, 255, 0.07);
+      --text: #eef2f6;
+      --muted: #8a94a3;
+      --dim: #5b6472;
+      --accent: 45, 212, 191;
+      --ok: #22c55e;
+      --warn: #f59e0b;
+      --err: #ef4444;
+      --shift-x: 0px;
+      --shift-y: 0px;
+      --sub-x: 0px;
+      --sub-y: 0px;
+      --pad-l: max(16px, env(safe-area-inset-left));
+      --pad-r: max(16px, env(safe-area-inset-right));
+      color-scheme: dark;
+    }
+
+    body[data-theme="default"] {
+      --bg: #06080b;
+      --card: rgba(255, 255, 255, 0.048);
+      --line: rgba(255, 255, 255, 0.085);
+    }
+    body[data-theme="midnight"] {
+      --bg: #050914;
+      --card: rgba(120, 150, 255, 0.065);
+      --line: rgba(140, 170, 255, 0.12);
+      --accent: 96, 165, 250;
+    }
+    body[data-theme="warm"] {
+      --bg: #0c0806;
+      --card: rgba(255, 196, 150, 0.055);
+      --line: rgba(255, 196, 150, 0.1);
+      --accent: 245, 158, 11;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-user-select: none;
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: Roboto, "Segoe UI", system-ui, sans-serif;
+      font-variant-numeric: tabular-nums;
+    }
+
+    body[data-theme="default"]::before,
+    body[data-theme="midnight"]::before,
+    body[data-theme="warm"]::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      background:
+        radial-gradient(60% 80% at 78% 30%, rgba(var(--accent), 0.14), transparent 70%),
+        radial-gradient(50% 60% at 10% 100%, rgba(var(--accent), 0.05), transparent 70%);
+      pointer-events: none;
+    }
+
+    button {
+      font: inherit;
+      color: inherit;
+      background: none;
+      border: 0;
+      outline: none;
+    }
+
+    /* --- OLED Burn-in Protection Layers --- */
+    #mainGrid {
+      width: 100vw;
+      height: 100vh;
+      padding: 14px var(--pad-r) 14px var(--pad-l);
+      display: grid;
+      grid-template-columns: 5fr 6fr;
+      gap: 16px;
+      transform: translate(var(--shift-x), var(--shift-y));
+      transition: transform 2.2s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .sub-shift {
+      transform: translate(var(--sub-x), var(--sub-y));
+      transition: transform 2.2s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    /* Idle Dimming Layer */
+    #dimLayer {
+      position: fixed;
+      inset: 0;
+      z-index: 50;
+      background: rgba(0, 0, 0, 0.72);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 1.2s ease;
+    }
+    body.dimmed #dimLayer {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    /* Full OLED Floating Clock Screensaver */
+    #saverLayer {
+      position: fixed;
+      inset: 0;
+      z-index: 60;
+      background: #000000;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.8s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    body.saver #saverLayer {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    #saverFloat {
+      text-align: center;
+      transition: transform 3s ease-in-out;
+    }
+    .saver-clock {
+      font-size: min(22vw, 130px);
+      font-weight: 200;
+      letter-spacing: -0.04em;
+      line-height: 1;
+      color: rgba(45, 212, 191, 0.08);
+      -webkit-text-stroke: 1px rgba(238, 242, 246, 0.36);
+    }
+    .saver-date {
+      margin-top: 8px;
+      font-size: 14px;
+      color: rgba(255, 255, 255, 0.22);
+      text-transform: capitalize;
+      letter-spacing: 0.04em;
+    }
+
+    /* --- Left Column: Status, Clock & Weather --- */
+    .left-col {
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      min-width: 0;
+      padding: 4px 4px 4px 2px;
+    }
+
+    .top-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .pill-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 6px 11px;
+      border-radius: 999px;
+      background: var(--card);
+      border: 1px solid var(--line);
+      font-size: 12px;
+      color: var(--muted);
+      cursor: pointer;
+      transition: transform 0.12s ease, background 0.2s ease;
+    }
+    .pill-btn:active {
+      transform: scale(0.95);
+      background: var(--card-hi);
+    }
+
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--dim);
+      transition: background 0.3s ease, box-shadow 0.3s ease;
+    }
+    .dot.on {
+      background: var(--ok);
+      box-shadow: 0 0 8px rgba(34, 197, 94, 0.75);
+    }
+    .dot.wait {
+      background: var(--warn);
+      box-shadow: 0 0 8px rgba(245, 158, 11, 0.75);
+    }
+    .dot.off {
+      background: var(--err);
+    }
+
+    .clock-wrap {
+      margin: auto 0;
+      padding: 4px 0;
+    }
+    .clock-main {
+      display: flex;
+      align-items: flex-start;
+      font-weight: 200;
+      font-size: clamp(56px, 13.5vw, 112px);
+      line-height: 0.94;
+      letter-spacing: -0.04em;
+      margin-left: -0.03em;
+    }
+    @keyframes blink { 50% { opacity: 0.2; } }
+    .colon {
+      opacity: 0.55;
+      margin: 0 0.01em;
+      animation: blink 2s steps(1) infinite;
+    }
+    .sec {
+      font-size: 0.22em;
+      font-weight: 400;
+      color: var(--muted);
+      letter-spacing: 0;
+      margin: 0.45em 0 0 0.4em;
+    }
+    .date-line {
+      font-size: clamp(14px, 2.2vw, 20px);
+      color: #c9d1db;
+      margin-top: 6px;
+      text-transform: capitalize;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .wx-card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 12px 15px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      cursor: pointer;
+      transition: background 0.2s ease;
+    }
+    .wx-card:active {
+      background: var(--card-hi);
+    }
+    .wx-left {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-width: 0;
+    }
+    .wx-icon {
+      font-size: clamp(28px, 4.5vw, 40px);
+      line-height: 1;
+    }
+    .wx-info {
+      min-width: 0;
+    }
+    .wx-row1 {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+    }
+    .wx-temp {
+      font-size: clamp(22px, 3.6vw, 32px);
+      font-weight: 300;
+      letter-spacing: -0.02em;
+    }
+    .wx-desc {
+      font-size: 13px;
+      font-weight: 500;
+      color: #c9d1db;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .wx-meta {
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: 2px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .wx-hourly {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding-left: 10px;
+      border-left: 1px solid var(--line);
+      flex-shrink: 0;
+    }
+    .wx-h-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      font-size: 11px;
+      gap: 2px;
+    }
+    .wx-h-time { color: var(--muted); }
+    .wx-h-val { font-weight: 600; }
+
+    /* --- Right Column: Media & Volume HID Grid --- */
+    .right-col {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      height: 100%;
+      min-width: 0;
+    }
+
+    .col-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 2px 4px;
+    }
+    .col-title {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    .col-feedback {
+      font-size: 11.5px;
+      color: rgb(var(--accent));
+      font-weight: 500;
+      opacity: 0;
+      transition: opacity 0.2s ease;
+    }
+    .col-feedback.show {
+      opacity: 1;
+    }
+
+    .media-grid {
+      flex: 1;
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      grid-template-rows: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      min-height: 0;
+    }
+
+    .hid-key {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      border-radius: 18px;
+      background: linear-gradient(160deg, rgba(var(--k, 255, 255, 255), 0.12), rgba(255, 255, 255, 0.02));
+      border: 1px solid rgba(var(--k, 255, 255, 255), 0.22);
+      color: var(--text);
+      cursor: pointer;
+      transition: transform 0.1s ease, filter 0.15s ease, box-shadow 0.15s ease;
+      overflow: hidden;
+    }
+    .hid-key:active, .hid-key.active {
+      transform: scale(0.94);
+      filter: brightness(1.35);
+      box-shadow: inset 0 0 0 2px rgb(var(--accent));
+    }
+    .hid-key.play-btn {
+      background: linear-gradient(160deg, rgba(45, 212, 191, 0.24), rgba(45, 212, 191, 0.05));
+      border-color: rgba(45, 212, 191, 0.42);
+    }
+    .hid-key svg {
+      width: clamp(26px, 4.2vw, 36px);
+      height: clamp(26px, 4.2vw, 36px);
+      fill: currentColor;
+    }
+    .hid-key span {
+      font-size: clamp(12px, 1.6vw, 14px);
+      font-weight: 500;
+      color: #e5e9ef;
+    }
+
+    /* --- Modals (Bluetooth & OLED Settings) --- */
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 45;
+      background: rgba(0, 0, 0, 0.78);
+      backdrop-filter: blur(8px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    }
+    .modal-backdrop.open {
+      display: flex;
+    }
+    .modal-card {
+      width: min(480px, 94vw);
+      max-height: 88vh;
+      overflow-y: auto;
+      background: #0d1016;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 20px;
+      padding: 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      box-shadow: 0 18px 50px rgba(0, 0, 0, 0.75);
+    }
+    .modal-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 16px;
+      font-weight: 700;
+    }
+    .close-btn {
+      padding: 4px 10px;
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.08);
+      font-size: 13px;
+    }
+    .dev-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .dev-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 14px;
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.045);
+      border: 1px solid var(--line);
+      text-align: left;
+    }
+    .dev-item.connected {
+      border-color: rgba(34, 197, 94, 0.5);
+      background: rgba(34, 197, 94, 0.1);
+    }
+    .action-btn {
+      padding: 9px 14px;
+      border-radius: 11px;
+      background: rgba(45, 212, 191, 0.2);
+      border: 1px solid rgba(45, 212, 191, 0.4);
+      color: #eef2f6;
+      font-size: 13px;
+      font-weight: 600;
+      text-align: center;
+    }
+    .input-row {
+      display: flex;
+      gap: 8px;
+    }
+    .text-input {
+      flex: 1;
+      padding: 9px 12px;
+      border-radius: 10px;
+      border: 1px solid var(--line);
+      background: #06080b;
+      color: var(--text);
+      font: inherit;
+      font-size: 14px;
+    }
+    .opt-group {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .opt-chip {
+      padding: 6px 12px;
+      border-radius: 9px;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid var(--line);
+      font-size: 12.5px;
+    }
+    .opt-chip.on {
+      background: rgba(45, 212, 191, 0.22);
+      border-color: rgba(45, 212, 191, 0.55);
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body data-theme="amoled">
+
+  <!-- Velo Auto-Dimming (il primo tocco risveglia soltanto) -->
+  <div id="dimLayer"></div>
+
+  <!-- Screensaver OLED Floating Clock -->
+  <div id="saverLayer">
+    <div id="saverFloat">
+      <div class="saver-clock"><span id="svH">--</span>:<span id="svM">--</span></div>
+      <div id="svDate" class="saver-date"></div>
+    </div>
+  </div>
+
+  <!-- Griglia Principale Soggetta a Pixel Shift Orbitale -->
+  <main id="mainGrid">
+    <!-- LATO SINISTRO: Stato, Orologio e Meteo -->
+    <section class="left-col">
+      <div class="top-bar">
+        <button id="btPill" class="pill-btn" onclick="openBtModal()">
+          <span id="btDot" class="dot"></span>
+          <span id="btLabel">Bluetooth HID</span>
+        </button>
+
+        <button class="pill-btn" onclick="openOledModal()">
+          <span id="batLabel">🔋 --%</span>
+          <span>·</span>
+          <span>🛡️ OLED</span>
+        </button>
+      </div>
+
+      <div class="clock-wrap sub-shift">
+        <div class="clock-main">
+          <span id="hh">--</span><span class="colon">:</span><span id="mm">--</span>
+          <span id="ss" class="sec">00</span>
+        </div>
+        <div id="dateStr" class="date-line">caricamento...</div>
+      </div>
+
+      <div class="wx-card" onclick="openWxModal()">
+        <div class="wx-left">
+          <span id="wxIcon" class="wx-icon">⛅</span>
+          <div class="wx-info">
+            <div class="wx-row1">
+              <span id="wxTemp" class="wx-temp">--°</span>
+              <span id="wxDesc" class="wx-desc">Meteo locale</span>
+            </div>
+            <div id="wxMeta" class="wx-meta">Tocca per impostare la città</div>
+          </div>
+        </div>
+        <div id="wxHourly" class="wx-hourly"></div>
+      </div>
+    </section>
+
+    <!-- LATO DESTRO: Controlli Multimediali e Volume -->
+    <section class="right-col">
+      <div class="col-header">
+        <span class="col-title">Controlli Media &amp; Audio</span>
+        <span id="hidFeedback" class="col-feedback">Inviato</span>
+      </div>
+
+      <div class="media-grid">
+        <!-- Precedente (0x00B6) -->
+        <button class="hid-key" style="--k: 148, 163, 184;" onclick="triggerMedia(0x00B6, 'Precedente', this)">
+          <svg class="sub-shift" viewBox="0 0 24 24"><path d="M6 6h2v12H6zm3.5 6 8.5 6V6z"/></svg>
+          <span>Precedente</span>
+        </button>
+
+        <!-- Play / Pausa (0x00CD) -->
+        <button class="hid-key play-btn" onclick="triggerMedia(0x00CD, 'Play / Pausa', this)">
+          <svg class="sub-shift" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+          <span>Play / Pausa</span>
+        </button>
+
+        <!-- Successiva (0x00B5) -->
+        <button class="hid-key" style="--k: 148, 163, 184;" onclick="triggerMedia(0x00B5, 'Successiva', this)">
+          <svg class="sub-shift" viewBox="0 0 24 24"><path d="m6 18 8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>
+          <span>Successiva</span>
+        </button>
+
+        <!-- Volume Giù (0x00EA) -->
+        <button class="hid-key" style="--k: 56, 189, 248;"
+          onpointerdown="startRepeatMedia(0x00EA, 'Volume −', this)"
+          onpointerup="stopRepeatMedia()"
+          onpointerleave="stopRepeatMedia()"
+          onpointercancel="stopRepeatMedia()">
+          <svg class="sub-shift" viewBox="0 0 24 24"><path d="M18.5 12c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM5 9v6h4l5 5V4L9 9H5z"/></svg>
+          <span>Volume −</span>
+        </button>
+
+        <!-- Mute (0x00E2) -->
+        <button class="hid-key" style="--k: 244, 63, 94;" onclick="triggerMedia(0x00E2, 'Mute Audio', this)">
+          <svg class="sub-shift" viewBox="0 0 24 24"><path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3 3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4 9.91 6.09 12 8.18V4z"/></svg>
+          <span>Mute</span>
+        </button>
+
+        <!-- Volume Su (0x00E9) -->
+        <button class="hid-key" style="--k: 56, 189, 248;"
+          onpointerdown="startRepeatMedia(0x00E9, 'Volume +', this)"
+          onpointerup="stopRepeatMedia()"
+          onpointerleave="stopRepeatMedia()"
+          onpointercancel="stopRepeatMedia()">
+          <svg class="sub-shift" viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>
+          <span>Volume +</span>
+        </button>
+      </div>
+    </section>
+  </main>
+
+  <!-- Modal Connessione Bluetooth HID -->
+  <div id="btModal" class="modal-backdrop" onclick="if(event.target===this)closeModals()">
+    <div class="modal-card">
+      <div class="modal-head">
+        <span>Connessione Bluetooth HID</span>
+        <button class="close-btn" onclick="closeModals()">Chiudi</button>
+      </div>
+      <div id="btModalBody" class="dev-list"></div>
+      <div style="display:flex; gap:8px; margin-top:4px;">
+        <button class="action-btn" style="flex:1;" onclick="openAndroidBtSettings()">Impostazioni Bluetooth Android</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Protezione OLED & Tema -->
+  <div id="oledModal" class="modal-backdrop" onclick="if(event.target===this)closeModals()">
+    <div class="modal-card">
+      <div class="modal-head">
+        <span>🛡️ Protezione AMOLED (Pixel 6a)</span>
+        <button class="close-btn" onclick="closeModals()">Chiudi</button>
+      </div>
+
+      <div style="font-size:12.5px; color:var(--muted);">
+        Il <b>Pixel Shift Orbitale</b> (±3px ogni 60s) è sempre attivo per evitare che testi e bordi insistano sugli stessi subpixel OLED.
+      </div>
+
+      <div>
+        <div style="font-size:12px; color:var(--muted); margin-bottom:6px;">Auto-Dimming (riduce luminosità al 2% dopo inattività):</div>
+        <div id="dimChips" class="opt-group"></div>
+      </div>
+
+      <div>
+        <div style="font-size:12px; color:var(--muted); margin-bottom:6px;">Screensaver OLED Floating Clock dopo:</div>
+        <div id="saverChips" class="opt-group"></div>
+      </div>
+
+      <div>
+        <div style="font-size:12px; color:var(--muted); margin-bottom:6px;">Tema Sfondo:</div>
+        <div id="themeChips" class="opt-group"></div>
+      </div>
+
+      <div style="display:flex; gap:8px; margin-top:4px;">
+        <button class="action-btn" style="flex:1;" onclick="closeModals(); enterSaver();">Testa Screensaver Ora</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Città Meteo -->
+  <div id="wxModal" class="modal-backdrop" onclick="if(event.target===this)closeModals()">
+    <div class="modal-card">
+      <div class="modal-head">
+        <span>Posizione Meteo (Open-Meteo)</span>
+        <button class="close-btn" onclick="closeModals()">Chiudi</button>
+      </div>
+      <div class="input-row">
+        <input id="cityInput" class="text-input" type="text" placeholder="Es. Milano, Torino, Roma..." />
+        <button class="action-btn" onclick="searchCity()">Cerca</button>
+      </div>
+      <div id="cityResults" class="dev-list"></div>
+    </div>
+  </div>
+
+  <script>
+    const A = window.Android || null;
+    const pad = (n) => String(n).padStart(2, '0');
+
+    // --- Configurazione persistente ---
+    const defaultCfg = {
+      theme: 'amoled',
+      idleDimMin: 3,
+      saverMin: 10,
+      city: 'Milano',
+      lat: 45.4642,
+      lon: 9.1895
+    };
+    let cfg = Object.assign({}, defaultCfg, JSON.parse(localStorage.getItem('pcc_cfg') || '{}'));
+    function saveCfg() {
+      localStorage.setItem('pcc_cfg', JSON.stringify(cfg));
+      applyTheme();
+    }
+    function applyTheme() {
+      document.body.setAttribute('data-theme', cfg.theme || 'amoled');
+    }
+    applyTheme();
+
+    function haptic() {
+      try { A && A.haptic(); } catch (_) {}
+    }
+
+    // --- Orologio e Data ---
+    function tickClock() {
+      const now = new Date();
+      const h = pad(now.getHours()), m = pad(now.getMinutes()), s = pad(now.getSeconds());
+      document.getElementById('hh').textContent = h;
+      document.getElementById('mm').textContent = m;
+      document.getElementById('ss').textContent = s;
+      document.getElementById('svH').textContent = h;
+      document.getElementById('svM').textContent = m;
+      const dStr = now.toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long' });
+      document.getElementById('dateStr').textContent = dStr;
+      document.getElementById('svDate').textContent = dStr;
+      checkIdleState();
+    }
+    setInterval(tickClock, 1000);
+
+    // --- OLED Anti-Burn-in: Pixel Shift Orbitale + Idle Dim + Floating Saver ---
+    const ORBIT = [
+      [0, 0], [2, 0], [3, 1], [3, 3], [1, 3], [-1, 3],
+      [-3, 2], [-3, 0], [-3, -2], [-1, -3], [1, -3], [3, -1]
+    ];
+    let orbitStep = 0;
+    let lastActivity = Date.now();
+    let isDimmed = false;
+    let isSaver = false;
+
+    function stepPixelShift() {
+      orbitStep = (orbitStep + 1) % ORBIT.length;
+      const [x, y] = ORBIT[orbitStep];
+      const [sx, sy] = ORBIT[(orbitStep + 5) % ORBIT.length];
+      const root = document.documentElement.style;
+      root.setProperty('--shift-x', x + 'px');
+      root.setProperty('--shift-y', y + 'px');
+      root.setProperty('--sub-x', Math.round(sx * 0.65) + 'px');
+      root.setProperty('--sub-y', Math.round(sy * 0.65) + 'px');
+
+      if (isSaver) moveSaverClock();
+    }
+    setInterval(stepPixelShift, 60000);
+
+    function moveSaverClock() {
+      const el = document.getElementById('saverFloat');
+      const dx = Math.floor(Math.random() * 220) - 110;
+      const dy = Math.floor(Math.random() * 90) - 45;
+      el.style.transform = `translate(${dx}px, ${dy}px)`;
+    }
+
+    function enterDim() {
+      if (isDimmed || isSaver) return;
+      isDimmed = true;
+      document.body.classList.add('dimmed');
+      try { A && A.setBrightness(0.02); } catch (_) {}
+    }
+
+    function enterSaver() {
+      isDimmed = false;
+      isSaver = true;
+      document.body.classList.remove('dimmed');
+      document.body.classList.add('saver');
+      moveSaverClock();
+      try { A && A.setBrightness(0.01); } catch (_) {}
+    }
+
+    function wakePanel() {
+      lastActivity = Date.now();
+      if (!isDimmed && !isSaver) return false;
+      isDimmed = false;
+      isSaver = false;
+      document.body.classList.remove('dimmed', 'saver');
+      try { A && A.setBrightness(-1); } catch (_) {}
+      return true;
+    }
+
+    function checkIdleState() {
+      const idleMs = Date.now() - lastActivity;
+      const saverMs = (cfg.saverMin || 0) * 60000;
+      const dimMs = (cfg.idleDimMin || 0) * 60000;
+
+      if (saverMs > 0 && idleMs >= saverMs) {
+        if (!isSaver) enterSaver();
+      } else if (dimMs > 0 && idleMs >= dimMs) {
+        if (!isDimmed && !isSaver) enterDim();
+      }
+    }
+
+    // Qualsiasi tocco su dimLayer o saverLayer risveglia senza premere i pulsanti sotto
+    ['dimLayer', 'saverLayer'].forEach((id) => {
+      document.getElementById(id).addEventListener('pointerdown', (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        haptic();
+        wakePanel();
+      });
+    });
+
+    document.addEventListener('pointerdown', () => {
+      lastActivity = Date.now();
+    }, { passive: true });
+
+    // Sensore di prossimità e luce dal Pixel 6a
+    let darkSince = 0;
+    window.onAndroidSensor = (kind, value) => {
+      if (kind === 'proximity' && value === true && (isDimmed || isSaver)) {
+        wakePanel();
+      } else if (kind === 'light') {
+        const lux = Number(value);
+        if (lux < 2) {
+          if (!darkSince) darkSince = Date.now();
+          else if (Date.now() - darkSince > 45000 && !isSaver && Date.now() - lastActivity > 60000) {
+            enterSaver();
+          }
+        } else {
+          darkSince = 0;
+        }
+      }
+    };
+
+    // --- Batteria Telefono ---
+    function updateBattery() {
+      if (!A || !A.battery) return;
+      try {
+        const b = JSON.parse(A.battery());
+        if (b.level >= 0) {
+          document.getElementById('batLabel').textContent = `${b.plugged ? '⚡' : '🔋'} ${b.level}%`;
+        }
+      } catch (_) {}
+    }
+    setInterval(updateBattery, 20000);
+
+    // --- Bluetooth HID Stato & Invio Comandi ---
+    let btState = { state: 'disconnected', permissionsGranted: true, bondedDevices: [] };
+
+    function renderBtStatus(jsonStr) {
+      try {
+        btState = typeof jsonStr === 'string' ? JSON.parse(jsonStr) : jsonStr;
+      } catch (_) { return; }
+
+      const dot = document.getElementById('btDot');
+      const lbl = document.getElementById('btLabel');
+      dot.className = 'dot';
+
+      if (!btState.permissionsGranted) {
+        dot.classList.add('warn');
+        lbl.textContent = 'Autorizza BT';
+      } else if (!btState.enabled) {
+        dot.classList.add('off');
+        lbl.textContent = 'BT Spento';
+      } else if (btState.state === 'connected') {
+        dot.classList.add('on');
+        lbl.textContent = `BT · ${btState.hostName || 'PC Connesso'}`;
+      } else if (btState.state === 'connecting') {
+        dot.classList.add('wait');
+        lbl.textContent = 'Connessione...';
+      } else {
+        dot.classList.add('off');
+        lbl.textContent = 'Connetti PC';
+      }
+
+      if (document.getElementById('btModal').classList.contains('open')) {
+        populateBtModal();
+      }
+    }
+
+    window.onBtState = (jsonStr) => renderBtStatus(jsonStr);
+
+    function refreshBtStatus() {
+      if (A && A.btStatus) renderBtStatus(A.btStatus());
+    }
+
+    let fbTimer = null;
+    function showFeedback(text) {
+      const el = document.getElementById('hidFeedback');
+      el.textContent = text;
+      el.classList.add('show');
+      clearTimeout(fbTimer);
+      fbTimer = setTimeout(() => el.classList.remove('show'), 1400);
+    }
+
+    function triggerMedia(usageCode, label, btnEl) {
+      haptic();
+      if (btnEl) {
+        btnEl.classList.add('active');
+        setTimeout(() => btnEl.classList.remove('active'), 140);
+      }
+      if (A && A.sendMedia) {
+        const ok = A.sendMedia(usageCode);
+        showFeedback(ok ? `✓ ${label}` : 'PC non connesso');
+        if (!ok && btState.state !== 'connected') openBtModal();
+      } else {
+        showFeedback(`Demo: ${label}`);
+      }
+    }
+
+    let repeatTimer = null;
+    let repeatInterval = null;
+    function startRepeatMedia(usageCode, label, btnEl) {
+      triggerMedia(usageCode, label, btnEl);
+      stopRepeatMedia();
+      repeatTimer = setTimeout(() => {
+        repeatInterval = setInterval(() => {
+          triggerMedia(usageCode, label, btnEl);
+        }, 130);
+      }, 380);
+    }
+    function stopRepeatMedia() {
+      clearTimeout(repeatTimer);
+      clearInterval(repeatInterval);
+    }
+
+    // --- Modali ---
+    function closeModals() {
+      document.querySelectorAll('.modal-backdrop').forEach((m) => m.classList.remove('open'));
+    }
+
+    function openBtModal() {
+      haptic();
+      if (A && A.btStatus) renderBtStatus(A.btStatus());
+      populateBtModal();
+      document.getElementById('btModal').classList.add('open');
+    }
+
+    function populateBtModal() {
+      const box = document.getElementById('btModalBody');
+      box.innerHTML = '';
+
+      if (A && !btState.permissionsGranted) {
+        const btn = document.createElement('button');
+        btn.className = 'action-btn';
+        btn.textContent = 'Concedi Permessi Bluetooth (Android 12+)';
+        btn.onclick = () => { A.btRequestPermissions(); closeModals(); };
+        box.appendChild(btn);
+        return;
+      }
+
+      const list = btState.bondedDevices || [];
+      if (!list.length) {
+        const msg = document.createElement('div');
+        msg.style.fontSize = '13px';
+        msg.style.color = 'var(--muted)';
+        msg.textContent = 'Nessun dispositivo associato trovato. Associa prima il PC dalle Impostazioni Bluetooth di Android.';
+        box.appendChild(msg);
+        return;
+      }
+
+      list.forEach((d) => {
+        const row = document.createElement('button');
+        row.className = 'dev-item' + (d.connected ? ' connected' : '');
+        row.innerHTML = `
+          <div>
+            <div style="font-weight:600; font-size:14px;">${d.name}</div>
+            <div style="font-size:11.5px; color:var(--muted);">${d.address}</div>
+          </div>
+          <span style="font-size:12px; font-weight:600; color:${d.connected ? 'var(--ok)' : 'rgb(var(--accent))'};">
+            ${d.connected ? 'Connesso (Disconnetti)' : 'Connetti'}
+          </span>
+        `;
+        row.onclick = () => {
+          haptic();
+          if (d.connected) A && A.btDisconnect();
+          else A && A.btConnect(d.address);
+          setTimeout(refreshBtStatus, 400);
+        };
+        box.appendChild(row);
+      });
+    }
+
+    function openAndroidBtSettings() {
+      haptic();
+      if (A && A.btOpenSettings) A.btOpenSettings();
+    }
+
+    function openOledModal() {
+      haptic();
+      const dimBox = document.getElementById('dimChips');
+      dimBox.innerHTML = '';
+      [[1, '1 min'], [3, '3 min'], [5, '5 min'], [10, '10 min'], [0, 'Mai']].forEach(([val, lbl]) => {
+        const b = document.createElement('button');
+        b.className = 'opt-chip' + (cfg.idleDimMin === val ? ' on' : '');
+        b.textContent = lbl;
+        b.onclick = () => { cfg.idleDimMin = val; saveCfg(); openOledModal(); };
+        dimBox.appendChild(b);
+      });
+
+      const savBox = document.getElementById('saverChips');
+      savBox.innerHTML = '';
+      [[5, '5 min'], [10, '10 min'], [15, '15 min'], [30, '30 min'], [0, 'Mai']].forEach(([val, lbl]) => {
+        const b = document.createElement('button');
+        b.className = 'opt-chip' + (cfg.saverMin === val ? ' on' : '');
+        b.textContent = lbl;
+        b.onclick = () => { cfg.saverMin = val; saveCfg(); openOledModal(); };
+        savBox.appendChild(b);
+      });
+
+      const thBox = document.getElementById('themeChips');
+      thBox.innerHTML = '';
+      [['amoled', 'AMOLED (#000000)'], ['default', 'PhoneBox Dark'], ['midnight', 'Midnight'], ['warm', 'Warm']].forEach(([val, lbl]) => {
+        const b = document.createElement('button');
+        b.className = 'opt-chip' + (cfg.theme === val ? ' on' : '');
+        b.textContent = lbl;
+        b.onclick = () => { cfg.theme = val; saveCfg(); openOledModal(); };
+        thBox.appendChild(b);
+      });
+
+      document.getElementById('oledModal').classList.add('open');
+    }
+
+    // --- Meteo Open-Meteo ---
+    const WX_MAP = {
+      0: ['Sereno', '☀️', '🌙'],
+      1: ['Prevalentemente sereno', '🌤️', '🌙'],
+      2: ['Parzialmente nuvoloso', '⛅', '☁️'],
+      3: ['Coperto', '☁️', '☁️'],
+      45: ['Nebbia', '🌫️'], 48: ['Nebbia', '🌫️'],
+      51: ['Pioviggine', '🌦️'], 53: ['Pioviggine', '🌦️'], 55: ['Pioviggine intensa', '🌧️'],
+      61: ['Pioggia leggera', '🌦️'], 63: ['Pioggia', '🌧️'], 65: ['Pioggia forte', '🌧️'],
+      71: ['Neve leggera', '🌨️'], 73: ['Neve', '🌨️'], 75: ['Neve forte', '❄️'],
+      80: ['Rovesci', '🌦️'], 81: ['Rovesci', '🌧️'], 82: ['Rovesci forti', '⛈️'],
+      95: ['Temporale', '⛈️'], 96: ['Temporale con grandine', '⛈️'], 99: ['Temporale forte', '⛈️']
+    };
+
+    function wxInfo(code, isDay = 1) {
+      const x = WX_MAP[code] || ['Variabile', '🌡️'];
+      return { desc: x[0], icon: (isDay === 0 && x[2]) ? x[2] : x[1] };
+    }
+
+    async function loadWeather() {
+      try {
+        const url = `https://api.open-meteo.com/v1/forecast?latitude=${cfg.lat}&longitude=${cfg.lon}` +
+          `&current=temperature_2m,apparent_temperature,weather_code,is_day,wind_speed_10m` +
+          `&hourly=temperature_2m,weather_code,is_day` +
+          `&daily=temperature_2m_max,temperature_2m_min&timezone=auto&forecast_days=2`;
+        const r = await fetch(url);
+        const d = await r.json();
+        if (!d || !d.current) return;
+        const info = wxInfo(d.current.weather_code, d.current.is_day);
+        document.getElementById('wxIcon').textContent = info.icon;
+        document.getElementById('wxTemp').textContent = Math.round(d.current.temperature_2m) + '°';
+        document.getElementById('wxDesc').textContent = `${info.desc} · ${cfg.city}`;
+        const hi = Math.round(d.daily.temperature_2m_max[0]);
+        const lo = Math.round(d.daily.temperature_2m_min[0]);
+        const wind = Math.round(d.current.wind_speed_10m || 0);
+        document.getElementById('wxMeta').textContent = `Max ${hi}° · Min ${lo}° · Vento ${wind} km/h`;
+
+        const hBox = document.getElementById('wxHourly');
+        hBox.innerHTML = '';
+        const nowHour = new Date().getHours();
+        let startIdx = d.hourly.time.findIndex((t) => Number(t.slice(11, 13)) >= nowHour);
+        if (startIdx < 0) startIdx = 0;
+        for (let k = 1; k <= 3; k++) {
+          const idx = startIdx + k * 3;
+          if (idx >= d.hourly.time.length) break;
+          const hiInfo = wxInfo(d.hourly.weather_code[idx], d.hourly.is_day[idx]);
+          const item = document.createElement('div');
+          item.className = 'wx-h-item';
+          item.innerHTML = `
+            <span class="wx-h-time">${d.hourly.time[idx].slice(11, 16)}</span>
+            <span>${hiInfo.icon}</span>
+            <span class="wx-h-val">${Math.round(d.hourly.temperature_2m[idx])}°</span>
+          `;
+          hBox.appendChild(item);
+        }
+      } catch (_) {}
+    }
+
+    function openWxModal() {
+      haptic();
+      document.getElementById('cityInput').value = cfg.city || '';
+      document.getElementById('cityResults').innerHTML = '';
+      document.getElementById('wxModal').classList.add('open');
+    }
+
+    async function searchCity() {
+      const q = document.getElementById('cityInput').value.trim();
+      if (!q) return;
+      const box = document.getElementById('cityResults');
+      box.innerHTML = '<div style="font-size:12px;color:var(--muted);">Ricerca in corso...</div>';
+      try {
+        const r = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q)}&count=5&language=it&format=json`);
+        const d = await r.json();
+        box.innerHTML = '';
+        (d.results || []).forEach((loc) => {
+          const btn = document.createElement('button');
+          btn.className = 'dev-item';
+          btn.innerHTML = `
+            <div>
+              <div style="font-weight:600;font-size:14px;">${loc.name}</div>
+              <div style="font-size:11.5px;color:var(--muted);">${[loc.admin1, loc.country].filter(Boolean).join(', ')}</div>
+            </div>
+            <span style="font-size:12px;color:rgb(var(--accent));">Seleziona</span>
+          `;
+          btn.onclick = () => {
+            cfg.city = loc.name;
+            cfg.lat = loc.latitude;
+            cfg.lon = loc.longitude;
+            saveCfg();
+            closeModals();
+            loadWeather();
+          };
+          box.appendChild(btn);
+        });
+      } catch (_) {
+        box.innerHTML = '<div style="font-size:12px;color:var(--err);">Errore di rete nella ricerca</div>';
+      }
+    }
+
+    // Avvio iniziale
+    tickClock();
+    updateBattery();
+    refreshBtStatus();
+    loadWeather();
+    setInterval(loadWeather, 15 * 60000);
+  </script>
+</body>
+</html>
