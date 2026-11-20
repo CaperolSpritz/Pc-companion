@@ -538,24 +538,29 @@ Add-Type -TypeDefinition $csCode -Language CSharp -ReferencedAssemblies System.D
 # Inizializza Windows SMTC (GlobalSystemMediaTransportControlsSessionManager) + Stream Thumbnail
 $script:smtcManager = $null
 $script:asTaskGeneric = $null
+$script:asStreamMethod = $null
 try {
     Add-Type -AssemblyName System.Runtime.WindowsRuntime
     $null = [Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager, Windows.Media.Control, ContentType = WindowsRuntime]
     $null = [Windows.Media.Control.GlobalSystemMediaTransportControlsSessionMediaProperties, Windows.Media.Control, ContentType = WindowsRuntime]
     $null = [Windows.Storage.Streams.IRandomAccessStreamWithContentType, Windows.Storage.Streams, ContentType = WindowsRuntime]
+    $null = [Windows.Storage.Streams.IInputStream, Windows.Storage.Streams, ContentType = WindowsRuntime]
     $null = [Windows.Foundation.IAsyncOperation`1, Windows.Foundation, ContentType = WindowsRuntime]
     $null = [System.IO.WindowsRuntimeStreamExtensions]
     $script:asTaskGeneric = ([System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object {
         $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`1'
     })[0]
+    $script:asStreamMethod = ([System.IO.WindowsRuntimeStreamExtensions].GetMethods() | Where-Object {
+        $_.Name -eq 'AsStreamForRead' -and $_.GetParameters().Count -eq 1
+    })[0]
     function Invoke-WinRtAwait($WinRtTask, $ResultType) {
         $asTask = $script:asTaskGeneric.MakeGenericMethod($ResultType)
         $netTask = $asTask.Invoke($null, @($WinRtTask))
-        $netTask.Wait(500) | Out-Null
+        $netTask.Wait(1500) | Out-Null
         return $netTask.Result
     }
     $script:smtcManager = Invoke-WinRtAwait ([Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager]::RequestAsync()) ([Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager])
-    Write-Host "[OK] Windows SMTC (Media Session Manager + Thumbnail) attivo." -ForegroundColor Green
+    Write-Host "[OK] Windows SMTC (Media Session Manager + Thumbnail Stream) attivo." -ForegroundColor Green
 } catch {
     Write-Host "[INFO] Windows SMTC non disponibile: $($_.Exception.Message)" -ForegroundColor DarkGray
 }
@@ -763,35 +768,40 @@ function Get-PhoneBoxMediaSnapshot {
             }
         } catch {}
 
-        # Estrazione Thumbnail (come MediaArtworkCache.cs di PhoneBox: ricontrolla nei primi 8 secondi dal cambio traccia
-        # perché Chrome/Freefy pubblica la nuova miniatura WebP con 1-3 secondi di ritardo rispetto al titolo)
+        # Estrazione Thumbnail con logging dettagliato su console PC
+        # (usa $script:asStreamMethod.Invoke per aggirare il bug di System.__ComObject in PowerShell 5.1!)
         $key = "$($s.SourceAppUserModelId)|$title|$artist"
         $nowUtc = [DateTime]::UtcNow
         if ($key -ne $script:lastTrackKey) {
             $script:lastTrackKey = $key
             $script:lastTrackTime = $nowUtc
+            Write-Host "[MEDIA] Nuova traccia rilevata ($appName - $stStr): '$title' - '$artist'" -ForegroundColor Cyan
         }
         $withinSettlingWindow = (($nowUtc - $script:lastTrackTime).TotalSeconds -le 8)
         if ($withinSettlingWindow -or ([string]::IsNullOrEmpty($script:cachedArtData) -and $null -ne $props.Thumbnail)) {
             $newArt = ""
-            if ($null -ne $props.Thumbnail) {
+            if ($null -ne $props.Thumbnail -and $null -ne $script:asStreamMethod) {
                 try {
                     $winrtStream = Invoke-WinRtAwait ($props.Thumbnail.OpenReadAsync()) ([Windows.Storage.Streams.IRandomAccessStreamWithContentType])
-                    if ($null -ne $winrtStream -and $winrtStream.Size -gt 0 -and $winrtStream.Size -lt 8388608) {
-                        $cType = $winrtStream.ContentType
-                        $netStream = [System.IO.WindowsRuntimeStreamExtensions]::AsStreamForRead($winrtStream)
-                        $newArt = [PcCompanionNative]::StreamToThumbnailDataUri($netStream, $cType, 112)
-                        $netStream.Dispose()
-                        $winrtStream.Dispose()
+                    if ($null -ne $winrtStream) {
+                        $netStream = $script:asStreamMethod.Invoke($null, @($winrtStream))
+                        if ($null -ne $netStream) {
+                            $newArt = [PcCompanionNative]::StreamToThumbnailDataUri($netStream, "", 112)
+                            $netStream.Dispose()
+                        }
                     }
-                } catch {}
+                } catch {
+                    Write-Host "  [MEDIA-LOG] Errore lettura stream Thumbnail: $($_.Exception.Message)" -ForegroundColor Red
+                }
             }
             if (-not [string]::IsNullOrEmpty($newArt) -and $newArt -ne $script:cachedArtData) {
                 $script:cachedArtData = $newArt
                 $script:cachedArtId++
+                Write-Host "  [MEDIA-LOG] Thumbnail caricata con successo! Lunghezza DataURI: $($newArt.Length) caratteri (artId=$($script:cachedArtId))" -ForegroundColor Green
             } elseif ([string]::IsNullOrEmpty($newArt) -and $null -eq $props.Thumbnail -and -not [string]::IsNullOrEmpty($script:cachedArtData)) {
                 $script:cachedArtData = ""
                 $script:cachedArtId++
+                Write-Host "  [MEDIA-LOG] Nessuna Thumbnail presente per questa traccia." -ForegroundColor DarkGray
             }
         }
 
