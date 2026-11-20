@@ -473,6 +473,7 @@ public class PcCompanionNative {
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int GetWindowText(IntPtr hWnd, StringBuilder lpString, int nMaxCount);
     [DllImport("user32.dll")] public static extern int GetWindowTextLength(IntPtr hWnd);
     [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
+    [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
     [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
     [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
@@ -529,6 +530,57 @@ public class PcCompanionNative {
         keybd_event(vk, 0, KEYEVENTF_KEYUP, UIntPtr.Zero);
         keybd_event(VK_LWIN, 0, KEYEVENTF_KEYUP, UIntPtr.Zero);
         if (withCtrl) keybd_event(VK_LCONTROL, 0, KEYEVENTF_KEYUP, UIntPtr.Zero);
+    }
+
+    // Invia Shift + Freccia Sinistra (playPrevious su Freefy) o Destra alla finestra del browser, ripristinando poi la finestra attiva
+    public static bool SendShiftArrowToBrowser(bool isLeft) {
+        IntPtr bestHwnd = IntPtr.Zero;
+        IntPtr fallbackHwnd = IntPtr.Zero;
+        EnumWindows((hWnd, lParam) => {
+            if (!IsWindowVisible(hWnd)) return true;
+            int len = GetWindowTextLength(hWnd);
+            if (len <= 0) return true;
+            uint pid; GetWindowThreadProcessId(hWnd, out pid);
+            string pName = "";
+            try { pName = Process.GetProcessById((int)pid).ProcessName.ToLowerInvariant(); } catch { }
+            if (pName == "chrome" || pName == "msedge" || pName == "firefox" || pName == "brave") {
+                var sb = new StringBuilder(len + 1);
+                GetWindowText(hWnd, sb, sb.Capacity);
+                string t = sb.ToString();
+                if (t.IndexOf("Freefy", StringComparison.OrdinalIgnoreCase) >= 0) {
+                    bestHwnd = hWnd;
+                    return false;
+                }
+                if (fallbackHwnd == IntPtr.Zero) fallbackHwnd = hWnd;
+            }
+            return true;
+        }, IntPtr.Zero);
+
+        IntPtr target = (bestHwnd != IntPtr.Zero) ? bestHwnd : fallbackHwnd;
+        if (target == IntPtr.Zero) return false;
+
+        IntPtr prevFg = GetForegroundWindow();
+        if (prevFg != target) {
+            SetForegroundWindow(target);
+            Thread.Sleep(45);
+        }
+
+        const uint KEYEVENTF_EXTENDEDKEY = 0x0001;
+        const uint KEYEVENTF_KEYUP = 0x0002;
+        const byte VK_SHIFT = 0x10;
+        byte arrowVk = isLeft ? (byte)0x25 : (byte)0x27;
+
+        keybd_event(VK_SHIFT, 0, 0, UIntPtr.Zero);
+        keybd_event(arrowVk, 0, KEYEVENTF_EXTENDEDKEY, UIntPtr.Zero);
+        Thread.Sleep(15);
+        keybd_event(arrowVk, 0, KEYEVENTF_EXTENDEDKEY | KEYEVENTF_KEYUP, UIntPtr.Zero);
+        keybd_event(VK_SHIFT, 0, KEYEVENTF_KEYUP, UIntPtr.Zero);
+
+        if (prevFg != IntPtr.Zero && prevFg != target) {
+            Thread.Sleep(35);
+            SetForegroundWindow(prevFg);
+        }
+        return true;
     }
 }
 '@
@@ -675,11 +727,15 @@ function Handle-PhoneCommand([string]$jsonLine) {
                                     Write-Host "     [MEDIA-CTRL] 1° tap Indietro (>4s) -> Riavvolgo il brano a 0:00 (Seek=0)" -ForegroundColor Yellow
                                     $null = Invoke-WinRtAwait ($s.TryChangePlaybackPositionAsync(0L)) ([bool])
                                 } else {
-                                    Write-Host "     [MEDIA-CTRL] 2° tap Indietro (o inizio brano) -> Invio TrySkipPreviousAsync()" -ForegroundColor Cyan
-                                    $okPrev = Invoke-WinRtAwait ($s.TrySkipPreviousAsync()) ([bool])
-                                    if ((-not $okPrev -or ($null -ne $ctrls -and -not $ctrls.IsPreviousEnabled)) -and $null -ne $ctrls -and $ctrls.IsPlaybackPositionEnabled) {
-                                        Write-Host "     [MEDIA-CTRL] Nota: questo sito web (PrevEnabled=False) non espone la traccia precedente a Windows; riavvolgo a 0:00." -ForegroundColor DarkYellow
-                                        $null = Invoke-WinRtAwait ($s.TryChangePlaybackPositionAsync(0L)) ([bool])
+                                    if ($null -ne $ctrls -and $ctrls.IsPreviousEnabled) {
+                                        Write-Host "     [MEDIA-CTRL] 2° tap Indietro -> Invio TrySkipPreviousAsync()" -ForegroundColor Cyan
+                                        $null = Invoke-WinRtAwait ($s.TrySkipPreviousAsync()) ([bool])
+                                    } else {
+                                        Write-Host "     [MEDIA-CTRL] 2° tap Indietro (PrevEnabled=False su Freefy/Browser) -> Invio scorciatoia nativa Freefy (Shift + Freccia Sinistra)!" -ForegroundColor Green
+                                        $sentKey = [PcCompanionNative]::SendShiftArrowToBrowser($true)
+                                        if (-not $sentKey -and $null -ne $ctrls -and $ctrls.IsPlaybackPositionEnabled) {
+                                            $null = Invoke-WinRtAwait ($s.TryChangePlaybackPositionAsync(0L)) ([bool])
+                                        }
                                     }
                                 }
                             }
