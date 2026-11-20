@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     PC-Companion Bridge (v1.3.0) - Script PowerShell user-space per Pixel 6a
     Comunica bidirezionalmente via Bluetooth RFCOMM nativo (Winsock AF_BTH)
@@ -83,16 +83,30 @@ public class PcCompanionNative {
         return s;
     }
 
-    // Ridimensiona un'immagine Stream in un quadrato JPEG 112x112 Base64 leggero (~3 KB) per invio istantaneo su Bluetooth
-    public static string StreamToThumbnailDataUri(Stream inputStream, int size) {
+    // Converte uno Stream immagine SMTC in Data URI Base64:
+    // - Se GDI+ lo supporta (JPEG/PNG/BMP), esegue center-crop 112x112 JPEG (~3 KB)
+    // - Se è WebP (usato da Chrome / Freefy / YouTube), GDI+ non lo supporta: invia direttamente data:image/webp;base64,... (come MediaMonitor.cs di PhoneBox!)
+    public static string StreamToThumbnailDataUri(Stream inputStream, string contentType, int size) {
+        if (inputStream == null) return "";
+        byte[] rawBytes = null;
         try {
-            using (var srcImg = Image.FromStream(inputStream)) {
+            using (var rawMs = new MemoryStream()) {
+                inputStream.CopyTo(rawMs);
+                rawBytes = rawMs.ToArray();
+            }
+        } catch {
+            return "";
+        }
+        if (rawBytes == null || rawBytes.Length == 0) return "";
+
+        try {
+            using (var mem = new MemoryStream(rawBytes))
+            using (var srcImg = Image.FromStream(mem)) {
                 using (var bmp = new Bitmap(size, size)) {
                     using (var g = Graphics.FromImage(bmp)) {
                         g.InterpolationMode = InterpolationMode.HighQualityBicubic;
                         g.SmoothingMode = SmoothingMode.HighQuality;
                         g.PixelOffsetMode = PixelOffsetMode.HighQuality;
-                        // Ritaglia al centro (center-crop) se rettangolare (es. miniatura YouTube 16:9)
                         int srcW = srcImg.Width;
                         int srcH = srcImg.Height;
                         int crop = Math.Min(srcW, srcH);
@@ -107,7 +121,18 @@ public class PcCompanionNative {
                 }
             }
         } catch {
-            return "";
+            // Fallback nativo per WebP (Chrome / Freefy / YouTube) esattamente come MediaMonitor.cs di PhoneBox
+            string mime = contentType;
+            if (string.IsNullOrEmpty(mime)) {
+                if (rawBytes.Length > 12 && rawBytes[0] == 0x52 && rawBytes[1] == 0x49 && rawBytes[8] == 0x57 && rawBytes[9] == 0x45) {
+                    mime = "image/webp";
+                } else if (rawBytes.Length > 4 && rawBytes[0] == 0x89 && rawBytes[1] == 0x50) {
+                    mime = "image/png";
+                } else {
+                    mime = "image/jpeg";
+                }
+            }
+            return "data:" + mime + ";base64," + Convert.ToBase64String(rawBytes);
         }
     }
 
@@ -535,11 +560,17 @@ try {
     Write-Host "[INFO] Windows SMTC non disponibile: $($_.Exception.Message)" -ForegroundColor DarkGray
 }
 
-# Cache per la Thumbnail SMTC (così la inviamo sul Bluetooth solo quando cambia il brano!)
+# Cache per la Thumbnail SMTC (con finestra di 8s per attendere le miniature ritardate di Chrome/Freefy come MediaArtworkCache.cs)
 $script:lastTrackKey = ""
+$script:lastTrackTime = [DateTime]::MinValue
 $script:cachedArtData = ""
 $script:cachedArtId = 0
 $script:sentArtId = -1
+$script:cachedIntBrightness = 80
+try {
+    $bInit = Get-CimInstance -Namespace root\wmi -ClassName WmiMonitorBrightness -ErrorAction SilentlyContinue
+    if ($bInit) { $script:cachedIntBrightness = [int]$bInit.CurrentBrightness }
+} catch {}
 
 # Legge all'avvio la luminosità reale del monitor esterno Dell S3422DW
 $script:cachedExtBrightness = [PcCompanionNative]::ReadExternalBrightness()
@@ -653,6 +684,7 @@ function Handle-PhoneCommand([string]$jsonLine) {
                     $mon = Get-CimInstance -Namespace root\wmi -ClassName WmiMonitorBrightnessMethods -ErrorAction SilentlyContinue
                     if ($mon) {
                         Invoke-CimMethod -InputObject $mon -MethodName WmiSetBrightness -Arguments @{Timeout=1; Brightness=$bVal} | Out-Null
+                        $script:cachedIntBrightness = $bVal
                     }
                 }
             }
@@ -731,24 +763,34 @@ function Get-PhoneBoxMediaSnapshot {
             }
         } catch {}
 
-        # Estrazione Thumbnail al cambio traccia (o se non ancora letta perché stava caricando)
+        # Estrazione Thumbnail (come MediaArtworkCache.cs di PhoneBox: ricontrolla nei primi 8 secondi dal cambio traccia
+        # perché Chrome/Freefy pubblica la nuova miniatura WebP con 1-3 secondi di ritardo rispetto al titolo)
         $key = "$($s.SourceAppUserModelId)|$title|$artist"
-        if ($key -ne $script:lastTrackKey -or ([string]::IsNullOrEmpty($script:cachedArtData) -and $null -ne $props.Thumbnail)) {
+        $nowUtc = [DateTime]::UtcNow
+        if ($key -ne $script:lastTrackKey) {
             $script:lastTrackKey = $key
+            $script:lastTrackTime = $nowUtc
+        }
+        $withinSettlingWindow = (($nowUtc - $script:lastTrackTime).TotalSeconds -le 8)
+        if ($withinSettlingWindow -or ([string]::IsNullOrEmpty($script:cachedArtData) -and $null -ne $props.Thumbnail)) {
             $newArt = ""
             if ($null -ne $props.Thumbnail) {
                 try {
                     $winrtStream = Invoke-WinRtAwait ($props.Thumbnail.OpenReadAsync()) ([Windows.Storage.Streams.IRandomAccessStreamWithContentType])
                     if ($null -ne $winrtStream -and $winrtStream.Size -gt 0 -and $winrtStream.Size -lt 8388608) {
+                        $cType = $winrtStream.ContentType
                         $netStream = [System.IO.WindowsRuntimeStreamExtensions]::AsStreamForRead($winrtStream)
-                        $newArt = [PcCompanionNative]::StreamToThumbnailDataUri($netStream, 112)
+                        $newArt = [PcCompanionNative]::StreamToThumbnailDataUri($netStream, $cType, 112)
                         $netStream.Dispose()
                         $winrtStream.Dispose()
                     }
                 } catch {}
             }
-            if ($newArt -ne $script:cachedArtData) {
+            if (-not [string]::IsNullOrEmpty($newArt) -and $newArt -ne $script:cachedArtData) {
                 $script:cachedArtData = $newArt
+                $script:cachedArtId++
+            } elseif ([string]::IsNullOrEmpty($newArt) -and $null -eq $props.Thumbnail -and -not [string]::IsNullOrEmpty($script:cachedArtData)) {
+                $script:cachedArtData = ""
                 $script:cachedArtId++
             }
         }
@@ -773,31 +815,57 @@ function Get-PhoneBoxMediaSnapshot {
     }
 }
 
+$script:cachedCpuLoad = 0
+$script:cachedRamPct = 0
+$script:cachedRamUsedGb = 0
+$script:cachedRamTotalGb = 0
+$script:cachedUptimeStr = ""
+$script:cachedNetDown = 0
+$script:cachedNetUp = 0
+$script:cachedProcs = @()
+
 function Build-TelemetryJson {
-    $os = Get-CimInstance Win32_OperatingSystem
-    $cpuLoad = (Get-CimInstance Win32_Processor | Measure-Object -Property LoadPercentage -Average).Average
-    if ($null -eq $cpuLoad) { $cpuLoad = 0 }
+    # Esegue le query WMI pesanti solo ogni 3 cicli (~3s) per mantenere i comandi Bluetooth ultra-reattivi (<20ms)
+    if ($script:lastDiskTick % 3 -eq 0) {
+        $os = Get-CimInstance Win32_OperatingSystem
+        $cpuLoad = (Get-CimInstance Win32_Processor | Measure-Object -Property LoadPercentage -Average).Average
+        if ($null -eq $cpuLoad) { $cpuLoad = 0 }
+        $script:cachedCpuLoad = [int]$cpuLoad
 
-    $totalMb = [math]::Round($os.TotalVisibleMemorySize / 1024, 0)
-    $freeMb  = [math]::Round($os.FreePhysicalMemory / 1024, 0)
-    $usedMb  = $totalMb - $freeMb
-    $ramPct  = if ($totalMb -gt 0) { [math]::Round(($usedMb / $totalMb) * 100, 0) } else { 0 }
-    $ramUsedGb  = [math]::Round($usedMb / 1024, 1)
-    $ramTotalGb = [math]::Round($totalMb / 1024, 1)
+        $totalMb = [math]::Round($os.TotalVisibleMemorySize / 1024, 0)
+        $freeMb  = [math]::Round($os.FreePhysicalMemory / 1024, 0)
+        $usedMb  = $totalMb - $freeMb
+        $script:cachedRamPct    = if ($totalMb -gt 0) { [int][math]::Round(($usedMb / $totalMb) * 100, 0) } else { 0 }
+        $script:cachedRamUsedGb = [math]::Round($usedMb / 1024, 1)
+        $script:cachedRamTotalGb = [math]::Round($totalMb / 1024, 1)
 
-    $upSpan = (Get-Date) - $os.LastBootUpTime
-    $uptimeStr = "{0}g {1}h {2}m" -f $upSpan.Days, $upSpan.Hours, $upSpan.Minutes
+        $upSpan = (Get-Date) - $os.LastBootUpTime
+        $script:cachedUptimeStr = "{0}g {1}h {2}m" -f $upSpan.Days, $upSpan.Hours, $upSpan.Minutes
 
-    $netDownKbs = 0; $netUpKbs = 0
-    try {
-        $netStat = Get-CimInstance Win32_PerfFormattedData_Tcpip_NetworkInterface | Select-Object -First 1
-        if ($netStat) {
-            $netDownKbs = [math]::Round($netStat.BytesReceivedPersec / 1024, 0)
-            $netUpKbs   = [math]::Round($netStat.BytesSentPersec / 1024, 0)
-        }
-    } catch {}
+        try {
+            $netStat = Get-CimInstance Win32_PerfFormattedData_Tcpip_NetworkInterface | Select-Object -First 1
+            if ($netStat) {
+                $script:cachedNetDown = [math]::Round($netStat.BytesReceivedPersec / 1024, 0)
+                $script:cachedNetUp   = [math]::Round($netStat.BytesSentPersec / 1024, 0)
+            }
+        } catch {}
 
-    if ($script:lastDiskTick % 10 -eq 0) {
+        $script:cachedProcs = @(Get-Process | Sort-Object WorkingSet64 -Descending | Select-Object -First 10 | ForEach-Object {
+            @{
+                pid   = $_.Id
+                name  = $_.ProcessName
+                cpu   = [math]::Round(($_.CPU % 100), 1)
+                ramMb = [math]::Round($_.WorkingSet64 / 1MB, 0)
+            }
+        })
+
+        try {
+            $bObj = Get-CimInstance -Namespace root\wmi -ClassName WmiMonitorBrightness -ErrorAction SilentlyContinue
+            if ($bObj) { $script:cachedIntBrightness = [int]$bObj.CurrentBrightness }
+        } catch {}
+    }
+
+    if ($script:lastDiskTick % 12 -eq 0) {
         $script:cachedDisks = @(Get-CimInstance Win32_LogicalDisk -Filter "DriveType=3" | ForEach-Object {
             $tot = [math]::Round($_.Size / 1GB, 0)
             $free = [math]::Round($_.FreeSpace / 1GB, 0)
@@ -808,15 +876,6 @@ function Build-TelemetryJson {
     }
     $script:lastDiskTick++
 
-    $procs = @(Get-Process | Sort-Object WorkingSet64 -Descending | Select-Object -First 10 | ForEach-Object {
-        @{
-            pid   = $_.Id
-            name  = $_.ProcessName
-            cpu   = [math]::Round(($_.CPU % 100), 1)
-            ramMb = [math]::Round($_.WorkingSet64 / 1MB, 0)
-        }
-    })
-
     $vol = 50; $muted = $false; $peak = 0
     [PcCompanionNative]::GetMasterAudio([ref]$vol, [ref]$muted, [ref]$peak)
     $sessionsRaw = [PcCompanionNative]::GetAudioSessions()
@@ -824,7 +883,7 @@ function Build-TelemetryJson {
         @{ pid = $_.pid; name = $_.name; vol = $_.vol; muted = $_.muted }
     })
 
-    # Snapshot Media SMTC completo (con stato Playing/Paused, Timeline e Thumbnail)
+    # Snapshot Media SMTC completo (con stato Playing/Paused, Timeline e Thumbnail WebP/JPEG/PNG)
     $mediaSnap = Get-PhoneBoxMediaSnapshot
 
     $winsRaw = [PcCompanionNative]::GetOpenWindows()
@@ -832,31 +891,25 @@ function Build-TelemetryJson {
         @{ hwnd = $_.hwnd; title = $_.title; proc = $_.proc }
     })
 
-    $brightInt = -1
-    try {
-        $bObj = Get-CimInstance -Namespace root\wmi -ClassName WmiMonitorBrightness -ErrorAction SilentlyContinue
-        if ($bObj) { $brightInt = [int]$bObj.CurrentBrightness }
-    } catch {}
-
     $payload = @{
         host           = $env:COMPUTERNAME
-        cpu            = [int]$cpuLoad
-        ramPct         = [int]$ramPct
-        ramUsedGb      = $ramUsedGb
-        ramTotalGb     = $ramTotalGb
-        gpu            = [int]([math]::Min(100, [math]::Round($cpuLoad * 0.65, 0)))
-        uptime         = $uptimeStr
-        netDownKbs     = $netDownKbs
-        netUpKbs       = $netUpKbs
+        cpu            = $script:cachedCpuLoad
+        ramPct         = $script:cachedRamPct
+        ramUsedGb      = $script:cachedRamUsedGb
+        ramTotalGb     = $script:cachedRamTotalGb
+        gpu            = [int]([math]::Min(100, [math]::Round($script:cachedCpuLoad * 0.65, 0)))
+        uptime         = $script:cachedUptimeStr
+        netDownKbs     = $script:cachedNetDown
+        netUpKbs       = $script:cachedNetUp
         disks          = $script:cachedDisks
-        procs          = $procs
+        procs          = $script:cachedProcs
         vol            = $vol
         muted          = $muted
         peak           = $peak
         media          = $mediaSnap
         apps           = $apps
         windows        = $windows
-        brightnessInt  = $brightInt
+        brightnessInt  = $script:cachedIntBrightness
         brightnessExt  = $script:cachedExtBrightness
         extMonitorName = [PcCompanionNative]::cachedExtName
     }
@@ -885,17 +938,31 @@ while ($true) {
             $json = Build-TelemetryJson
             $writer.WriteLine($json)
 
-            for ($i = 0; $i -lt 10; $i++) {
+            for ($i = 0; $i -lt 16; $i++) {
                 if ($sock.Poll(1000, [System.Net.Sockets.SelectMode]::SelectRead)) {
                     if ($sock.Available -eq 0) {
                         throw "Connessione chiusa dallo smartphone"
                     }
+                    # Legge tutte le righe in coda e unifica (coalesce) eventuali comandi ripetuti di volume/luminosità
+                    $pendingLines = New-Object System.Collections.Generic.List[string]
                     while ($stream.DataAvailable) {
                         $cmdLine = $reader.ReadLine()
-                        if ($cmdLine) { Handle-PhoneCommand $cmdLine }
+                        if ($cmdLine) { $pendingLines.Add($cmdLine) }
+                    }
+                    for ($k = 0; $k -lt $pendingLines.Count; $k++) {
+                        $curLine = $pendingLines[$k]
+                        # Se il comando successivo nella stessa raffica è dello stesso tipo di slider, salta i valori intermedi vecchi
+                        if ($k + 1 -lt $pendingLines.Count) {
+                            $nextLine = $pendingLines[$k + 1]
+                            if (($curLine -match '"setMasterVolume"' -and $nextLine -match '"setMasterVolume"') -or
+                                ($curLine -match '"setBrightness"'   -and $nextLine -match '"setBrightness"')) {
+                                continue
+                            }
+                        }
+                        Handle-PhoneCommand $curLine
                     }
                 }
-                Start-Sleep -Milliseconds 100
+                Start-Sleep -Milliseconds 50
             }
         }
     } catch {

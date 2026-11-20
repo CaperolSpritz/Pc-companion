@@ -222,21 +222,23 @@
     .page-dots {
       display: flex;
       align-items: center;
-      gap: 6px;
-      padding: 4px 8px;
+      gap: 8px;
+      padding: 7px 13px;
       border-radius: 999px;
-      background: rgba(255, 255, 255, 0.025);
+      background: rgba(255, 255, 255, 0.045);
       border: 1px solid var(--line);
+      touch-action: none;
+      cursor: pointer;
     }
     .p-dot {
-      width: 6px;
-      height: 6px;
+      width: 7px;
+      height: 7px;
       border-radius: 999px;
-      background: rgba(255, 255, 255, 0.22);
-      transition: width 0.25s ease, background 0.25s ease;
+      background: rgba(255, 255, 255, 0.25);
+      transition: width 0.22s ease, background 0.22s ease;
     }
     .p-dot.active {
-      width: 18px;
+      width: 20px;
       background: rgb(var(--accent));
     }
 
@@ -473,7 +475,6 @@
       display: flex;
       align-items: center;
       cursor: pointer;
-      touch-action: none;
     }
     .bar::before {
       content: "";
@@ -576,7 +577,6 @@
       height: 28px;
       background: transparent;
       outline: none;
-      touch-action: none;
     }
     input[type=range].volr::-webkit-slider-runnable-track {
       height: 4px;
@@ -664,7 +664,7 @@
       border-radius: 999px;
       background: rgba(255, 255, 255, 0.14);
       outline: none;
-      touch-action: none;
+      touch-action: pan-y;
     }
     .range-slider::-webkit-slider-thumb {
       -webkit-appearance: none;
@@ -858,8 +858,8 @@
     .mon-row {
       display: flex;
       flex-direction: column;
-      gap: 3px;
-      margin-bottom: 7px;
+      gap: 4px;
+      margin-bottom: 8px;
     }
     .mon-label-line {
       display: flex;
@@ -867,6 +867,29 @@
       justify-content: space-between;
       font-size: 11px;
       color: #d1d5db;
+    }
+    .bright-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 5px;
+    }
+    .bright-btn {
+      padding: 6px 4px;
+      border-radius: 9px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--line);
+      font-size: 11.5px;
+      font-weight: 600;
+      text-align: center;
+      transition: transform 0.1s ease, background 0.2s ease, border-color 0.2s ease;
+    }
+    .bright-btn:active {
+      transform: scale(0.95);
+    }
+    .bright-btn.active {
+      background: rgba(var(--accent), 0.22);
+      border-color: rgba(var(--accent), 0.55);
+      color: #ffffff;
     }
 
     /* --- Modals --- */
@@ -1018,12 +1041,12 @@
           <span id="rotLabel">Rotazione: Mai</span>
         </button>
 
-        <!-- Indicatori pagina (Swipe nativo CSS Scroll Snap a destra/sinistra) -->
-        <div class="page-dots" title="Scorri a destra o sinistra per cambiare pagina">
-          <span class="p-dot active" onclick="goPage(0)"></span>
-          <span class="p-dot" onclick="goPage(1)"></span>
-          <span class="p-dot" onclick="goPage(2)"></span>
-          <span class="p-dot" onclick="goPage(3)"></span>
+        <!-- Indicatori pagina (Tap oppure Swipe/Trascinamento sopra i pallini per cambiare schermata) -->
+        <div id="pageDots" class="page-dots" title="Tocca o scorri sui pallini per cambiare pagina">
+          <span class="p-dot active" data-page="0"></span>
+          <span class="p-dot" data-page="1"></span>
+          <span class="p-dot" data-page="2"></span>
+          <span class="p-dot" data-page="3"></span>
         </div>
       </div>
     </header>
@@ -1182,8 +1205,10 @@
               <span>Master Volume PC</span>
               <span id="mixMasterLbl">50%</span>
             </div>
-            <div style="display:flex; align-items:center; gap:8px;">
-              <input id="mixMasterSlider" class="range-slider" type="range" min="0" max="100" value="50" oninput="onMasterVolInput(this.value)" />
+            <div style="display:flex; align-items:center; gap:6px;">
+              <button class="mini-btn" onclick="stepMasterVolume(-5)">−</button>
+              <input id="mixMasterSlider" class="range-slider" type="range" min="0" max="100" value="50" />
+              <button class="mini-btn" onclick="stepMasterVolume(5)">+</button>
               <button id="panicMuteBtn" class="mini-btn danger" onclick="toggleMasterMute()">🔇 Mute</button>
             </div>
           </div>
@@ -1236,26 +1261,32 @@
               <span>Luminosità Doppio Monitor &amp; Alimentazione</span>
             </div>
 
-            <!-- Slider 1: Monitor Interno del Portatile -->
+            <!-- Monitor 1: Display Portatile (Interno) con 4 pulsanti fissi 25% / 50% / 75% / 100% -->
             <div class="mon-row">
               <div class="mon-label-line">
                 <span>💻 Display Portatile (Interno)</span>
                 <b id="intBrightLbl">--%</b>
               </div>
-              <input id="intBrightSlider" class="range-slider" type="range" min="0" max="100" value="80"
-                oninput="onBrightInput('internal', this)"
-                onchange="onBrightChange('internal', this)" />
+              <div id="intBrightBtns" class="bright-grid">
+                <button class="bright-btn" data-val="25" onclick="setMonitorPreset('internal', 25)">25%</button>
+                <button class="bright-btn" data-val="50" onclick="setMonitorPreset('internal', 50)">50%</button>
+                <button class="bright-btn" data-val="75" onclick="setMonitorPreset('internal', 75)">75%</button>
+                <button class="bright-btn" data-val="100" onclick="setMonitorPreset('internal', 100)">100%</button>
+              </div>
             </div>
 
-            <!-- Slider 2: Monitor Esterno collegato via Docking Station (DDC/CI) -->
+            <!-- Monitor 2: Monitor Esterno collegato via Docking Station (DDC/CI) con 4 pulsanti fissi 25% / 50% / 75% / 100% -->
             <div class="mon-row">
               <div class="mon-label-line">
                 <span id="extMonTitle">🖥️ Monitor Esterno (Docking)</span>
                 <b id="extBrightLbl">--%</b>
               </div>
-              <input id="extBrightSlider" class="range-slider" type="range" min="0" max="100" value="90"
-                oninput="onBrightInput('external', this)"
-                onchange="onBrightChange('external', this)" />
+              <div id="extBrightBtns" class="bright-grid">
+                <button class="bright-btn" data-val="25" onclick="setMonitorPreset('external', 25)">25%</button>
+                <button class="bright-btn" data-val="50" onclick="setMonitorPreset('external', 50)">50%</button>
+                <button class="bright-btn" data-val="75" onclick="setMonitorPreset('external', 75)">75%</button>
+                <button class="bright-btn" data-val="100" onclick="setMonitorPreset('external', 100)">100%</button>
+              </div>
             </div>
 
             <div style="display:flex; gap:6px; margin-top:4px;">
@@ -1299,7 +1330,7 @@
   <div id="btModal" class="modal-backdrop" onclick="if(event.target===this)closeModals()">
     <div class="modal-card">
       <div class="modal-head">
-        <span>Connessione Bluetooth HID (v1.3.0)</span>
+        <span>Connessione Bluetooth HID (v1.4.0)</span>
         <button class="close-btn" onclick="closeModals()">Chiudi</button>
       </div>
       <div id="btDiagBox" style="padding:10px 12px; border-radius:12px; background:rgba(255,255,255,0.04); border:1px solid var(--line); font-size:12px; line-height:1.45;">
@@ -1527,6 +1558,134 @@
       const w = pager.clientWidth || window.innerWidth;
       pager.scrollLeft = currentPage * w;
     });
+
+    // --- Mini-Slider / Swipe sui 4 pallini in alto a destra (#pageDots) ---
+    const pageDotsEl = document.getElementById('pageDots');
+    let dotsStartX = 0;
+    let dotsSwiped = false;
+
+    pageDotsEl.addEventListener('pointerdown', (e) => {
+      dotsStartX = e.clientX;
+      dotsSwiped = false;
+      try { pageDotsEl.setPointerCapture(e.pointerId); } catch (_) {}
+    });
+
+    pageDotsEl.addEventListener('pointermove', (e) => {
+      if (!dotsStartX) return;
+      const dx = e.clientX - dotsStartX;
+      if (Math.abs(dx) >= 18) {
+        dotsSwiped = true;
+        dotsStartX = e.clientX; // permette anche di continuare a trascinare per sfogliare più pagine
+        if (dx < 0) {
+          goPage(currentPage + 1); // Swipe a sinistra -> schermata successiva
+        } else {
+          goPage(currentPage - 1); // Swipe a destra -> schermata precedente
+        }
+      }
+    });
+
+    pageDotsEl.addEventListener('pointerup', (e) => {
+      const wasSwiped = dotsSwiped;
+      dotsStartX = 0;
+      dotsSwiped = false;
+      if (!wasSwiped) {
+        const dot = e.target && e.target.closest ? e.target.closest('[data-page]') : null;
+        if (dot) {
+          goPage(Number(dot.dataset.page));
+        } else {
+          goPage((currentPage + 1) % PAGE_COUNT);
+        }
+      }
+    });
+    pageDotsEl.addEventListener('pointercancel', () => {
+      dotsStartX = 0;
+      dotsSwiped = false;
+    });
+
+    // --- Opzione 2: Guardia Intelligente Slider vs Swipe Pagina ---
+    // Se l'utente fa uno swipe orizzontale rapido (< 135ms) partendo sopra uno slider,
+    // ripristina il valore originale dello slider senza inviare comandi e gira la pagina!
+    // Se invece fa un tap secco o tiene appoggiato il dito per >= 135ms, regola fluidamente lo slider.
+    function bindSmartSlider(sliderEl, onPaint, onSend) {
+      let startVal = Number(sliderEl.value || 50);
+      let startX = 0;
+      let startY = 0;
+      let downAt = 0;
+      let unlocked = false;
+      let canceledForSwipe = false;
+      let holdTimer = 0;
+      let sendTimer = 0;
+      let releaseTimer = 0;
+
+      sliderEl.addEventListener('touchstart', (e) => {
+        if (e.touches.length !== 1) return;
+        clearTimeout(releaseTimer);
+        clearTimeout(holdTimer);
+        startVal = Number(sliderEl.value || 0);
+        startX = e.touches[0].clientX;
+        startY = e.touches[0].clientY;
+        downAt = Date.now();
+        unlocked = false;
+        canceledForSwipe = false;
+        setSliderDrag(sliderEl, true);
+        holdTimer = setTimeout(() => {
+          if (!canceledForSwipe) unlocked = true;
+        }, 135);
+      }, { passive: true });
+
+      sliderEl.addEventListener('touchmove', (e) => {
+        if (canceledForSwipe || e.touches.length !== 1) return;
+        const dx = e.touches[0].clientX - startX;
+        const dy = e.touches[0].clientY - startY;
+        const dt = Date.now() - downAt;
+        if (!unlocked && dt < 160 && Math.abs(dx) >= 24 && Math.abs(dx) > Math.abs(dy) * 1.2) {
+          // È uno swipe veloce per cambiare pagina! Ripristina lo slider e sfoglia la schermata
+          canceledForSwipe = true;
+          clearTimeout(holdTimer);
+          clearTimeout(sendTimer);
+          sliderEl.value = startVal;
+          onPaint(startVal);
+          setSliderDrag(sliderEl, false);
+          goPage(currentPage + (dx < 0 ? 1 : -1));
+        }
+      }, { passive: true });
+
+      sliderEl.addEventListener('input', () => {
+        if (canceledForSwipe) {
+          sliderEl.value = startVal;
+          onPaint(startVal);
+          return;
+        }
+        const v = Number(sliderEl.value);
+        onPaint(v);
+        clearTimeout(sendTimer);
+        sendTimer = setTimeout(() => {
+          if (!canceledForSwipe) onSend(Number(sliderEl.value));
+        }, 70);
+      });
+
+      const finishTouch = () => {
+        clearTimeout(holdTimer);
+        if (canceledForSwipe) {
+          sliderEl.value = startVal;
+          onPaint(startVal);
+          setSliderDrag(sliderEl, false);
+          return;
+        }
+        clearTimeout(sendTimer);
+        onSend(Number(sliderEl.value));
+        clearTimeout(releaseTimer);
+        releaseTimer = setTimeout(() => setSliderDrag(sliderEl, false), 600);
+      };
+
+      sliderEl.addEventListener('change', finishTouch);
+      sliderEl.addEventListener('touchend', finishTouch, { passive: true });
+      sliderEl.addEventListener('touchcancel', () => {
+        clearTimeout(holdTimer);
+        clearTimeout(sendTimer);
+        setSliderDrag(sliderEl, false);
+      }, { passive: true });
+    }
 
     // Pulsante Rotazione Schermate (cicla tra Mai -> 30s -> 1m -> 5m)
     const ROT_STEPS = [
@@ -1933,42 +2092,56 @@
       sendBridgeSilent({ cmd: 'mediaControl', action: 'seek', ms });
     });
 
-    // Volume inline nella card W.media (con riempimento --p e guardia anti-rimbalzo durante il drag)
-    let volTimer = 0;
-    let volRelease = 0;
+    // Volume inline nella card W.media + Master Volume in Pagina 2 (con Opzione 2 Smart Slider)
+    const mixMasterSlider = document.getElementById('mixMasterSlider');
 
     function paintMasterVol(v, muted) {
       const val = Math.min(100, Math.max(0, Math.round(Number(v) || 0)));
-      mVolRange.value = val;
-      mVolRange.style.setProperty('--p', val + '%');
+      if (draggingSlider !== mVolRange) {
+        mVolRange.value = val;
+        mVolRange.style.setProperty('--p', val + '%');
+      }
       mVolVal.textContent = val;
-      mediaCard.classList.toggle('muted-on', !!muted);
-      const mixSl = document.getElementById('mixMasterSlider');
+      if (muted !== undefined) {
+        mediaCard.classList.toggle('muted-on', !!muted);
+      }
+      const isMuted = mediaCard.classList.contains('muted-on');
+      if (mixMasterSlider && draggingSlider !== mixMasterSlider) {
+        mixMasterSlider.value = val;
+      }
       const mixLb = document.getElementById('mixMasterLbl');
-      if (mixSl && draggingSlider !== mixSl) mixSl.value = val;
-      if (mixLb) mixLb.textContent = (muted ? 'MUTE ' : '') + val + '%';
+      if (mixLb) mixLb.textContent = (isMuted ? 'MUTE ' : '') + val + '%';
     }
 
-    mVolRange.addEventListener('input', () => {
-      clearTimeout(volRelease);
-      setSliderDrag(mVolRange, true);
-      const v = Number(mVolRange.value);
-      mVolRange.style.setProperty('--p', v + '%');
-      mVolVal.textContent = v;
-      document.getElementById('mixMasterLbl').textContent = v + '%';
-      document.getElementById('mixMasterSlider').value = v;
-      clearTimeout(volTimer);
-      volTimer = setTimeout(() => sendBridgeSilent({ cmd: 'setMasterVolume', value: v }), 80);
-    });
-    mVolRange.addEventListener('change', () => {
-      clearTimeout(volRelease);
-      volRelease = setTimeout(() => setSliderDrag(mVolRange, false), 650);
-    });
-    mVolRange.addEventListener('pointercancel', () => {
-      clearTimeout(volTimer);
-      clearTimeout(volRelease);
-      setSliderDrag(mVolRange, false);
-    });
+    bindSmartSlider(
+      mVolRange,
+      (v) => {
+        mVolRange.style.setProperty('--p', v + '%');
+        mVolVal.textContent = v;
+        if (mixMasterSlider) mixMasterSlider.value = v;
+        document.getElementById('mixMasterLbl').textContent = v + '%';
+      },
+      (v) => sendBridgeSilent({ cmd: 'setMasterVolume', value: v })
+    );
+
+    bindSmartSlider(
+      mixMasterSlider,
+      (v) => {
+        mVolRange.value = v;
+        mVolRange.style.setProperty('--p', v + '%');
+        mVolVal.textContent = v;
+        document.getElementById('mixMasterLbl').textContent = v + '%';
+      },
+      (v) => sendBridgeSilent({ cmd: 'setMasterVolume', value: v })
+    );
+
+    function stepMasterVolume(delta) {
+      haptic();
+      const next = Math.min(100, Math.max(0, Number(mVolRange.value || 50) + delta));
+      mVolRange.value = next;
+      paintMasterVol(next);
+      sendBridgeSilent({ cmd: 'setMasterVolume', value: next });
+    }
 
     mMuteBtn.addEventListener('click', () => {
       haptic();
@@ -2019,44 +2192,127 @@
       return sendBridgeSilent(obj);
     }
 
-    let volDebounce = null;
-    let mixRelease = 0;
-    function onMasterVolInput(val) {
-      const mixSl = document.getElementById('mixMasterSlider');
-      clearTimeout(mixRelease);
-      setSliderDrag(mixSl, true);
-      const v = Number(val);
-      mVolRange.value = v;
-      mVolRange.style.setProperty('--p', v + '%');
-      mVolVal.textContent = v;
-      document.getElementById('mixMasterLbl').textContent = v + '%';
-      clearTimeout(volDebounce);
-      volDebounce = setTimeout(() => {
-        sendBridgeSilent({ cmd: 'setMasterVolume', value: v });
-      }, 80);
-      mixRelease = setTimeout(() => setSliderDrag(mixSl, false), 650);
-    }
-
     function toggleMasterMute() {
       sendBridge({ cmd: 'toggleMasterMute' });
     }
 
-    // Slider Luminosità Doppio Monitor con protezione anti-rimbalzo durante il drag
-    let brightReleaseInt = 0;
-    let brightReleaseExt = 0;
-    function onBrightInput(monitor, sliderEl) {
-      setSliderDrag(sliderEl, true);
+    // --- Luminosità Doppio Monitor con 4 Pulsanti Fissi (25%, 50%, 75%, 100%) ---
+    const BRIGHT_PRESETS = [25, 50, 75, 100];
+    let brightLockUntilInt = 0;
+    let brightLockUntilExt = 0;
+
+    function paintMonitorPresets(monitor, val) {
+      const num = Math.min(100, Math.max(0, Math.round(Number(val) || 0)));
       const lblId = monitor === 'external' ? 'extBrightLbl' : 'intBrightLbl';
-      document.getElementById(lblId).textContent = sliderEl.value + '%';
+      const boxId = monitor === 'external' ? 'extBrightBtns' : 'intBrightBtns';
+      document.getElementById(lblId).textContent = num + '%';
+      // Evidenzia il pulsante fisso più vicino (25, 50, 75, 100)
+      let closest = 25;
+      let minDiff = 999;
+      BRIGHT_PRESETS.forEach((p) => {
+        const d = Math.abs(num - p);
+        if (d < minDiff) { minDiff = d; closest = p; }
+      });
+      document.getElementById(boxId).querySelectorAll('.bright-btn').forEach((btn) => {
+        btn.classList.toggle('active', Number(btn.dataset.val) === closest && minDiff <= 15);
+      });
     }
-    function onBrightChange(monitor, sliderEl) {
-      sendBridge({ cmd: 'setBrightness', monitor, value: Number(sliderEl.value) });
-      if (monitor === 'external') {
-        clearTimeout(brightReleaseExt);
-        brightReleaseExt = setTimeout(() => setSliderDrag(sliderEl, false), 900);
-      } else {
-        clearTimeout(brightReleaseInt);
-        brightReleaseInt = setTimeout(() => setSliderDrag(sliderEl, false), 900);
+
+    function setMonitorPreset(monitor, val) {
+      if (monitor === 'external') brightLockUntilExt = Date.now() + 2000;
+      else brightLockUntilInt = Date.now() + 2000;
+      paintMonitorPresets(monitor, val);
+      sendBridge({ cmd: 'setBrightness', monitor, value: Number(val) });
+    }
+
+    // --- Mixer per Singola Applicazione con Riconciliazione DOM (stile controls.js di PhoneBox) ---
+    const appMixerRows = new Map();
+
+    function reconcileAppMixer(apps) {
+      document.getElementById('appCountLbl').textContent = `${apps.length} sessioni`;
+      const mBox = document.getElementById('appMixerBox');
+      if (apps.length === 0) {
+        appMixerRows.clear();
+        mBox.innerHTML = `<div style="font-size:12px; color:var(--muted); padding:8px;">Nessuna applicazione audio attiva al momento.</div>`;
+        return;
+      }
+      if (mBox.children.length === 1 && !mBox.firstElementChild.classList.contains('mixer-row')) {
+        mBox.innerHTML = '';
+      }
+
+      const activePids = new Set();
+      apps.forEach((ap) => {
+        activePids.add(ap.pid);
+        let entry = appMixerRows.get(ap.pid);
+        if (!entry) {
+          const row = document.createElement('div');
+          row.className = 'mixer-row';
+          row.innerHTML = `
+            <div class="mixer-top">
+              <span class="ap-title" style="font-weight:600;"></span>
+              <div style="display:flex; align-items:center; gap:5px;">
+                <span class="ap-val" style="font-size:11px; color:rgb(var(--accent)); min-width:30px; text-align:right;"></span>
+                <button class="mini-btn ap-down">−</button>
+                <button class="mini-btn ap-up">+</button>
+                <button class="mini-btn ap-mute"></button>
+              </div>
+            </div>
+            <input class="range-slider ap-slider" type="range" min="0" max="100" value="${ap.vol}" />
+          `;
+          const titleEl = row.querySelector('.ap-title');
+          const valEl = row.querySelector('.ap-val');
+          const downBtn = row.querySelector('.ap-down');
+          const upBtn = row.querySelector('.ap-up');
+          const muteBtn = row.querySelector('.ap-mute');
+          const sliderEl = row.querySelector('.ap-slider');
+
+          entry = { row, titleEl, valEl, muteBtn, sliderEl, muted: !!ap.muted };
+          appMixerRows.set(ap.pid, entry);
+
+          bindSmartSlider(
+            sliderEl,
+            (v) => { valEl.textContent = v + '%'; },
+            (v) => sendBridgeSilent({ cmd: 'setAppVolume', pid: ap.pid, value: v })
+          );
+
+          downBtn.addEventListener('click', () => {
+            const next = Math.max(0, Number(sliderEl.value) - 10);
+            sliderEl.value = next;
+            valEl.textContent = next + '%';
+            sendBridge({ cmd: 'setAppVolume', pid: ap.pid, value: next });
+          });
+          upBtn.addEventListener('click', () => {
+            const next = Math.min(100, Number(sliderEl.value) + 10);
+            sliderEl.value = next;
+            valEl.textContent = next + '%';
+            sendBridge({ cmd: 'setAppVolume', pid: ap.pid, value: next });
+          });
+          muteBtn.addEventListener('click', () => {
+            entry.muted = !entry.muted;
+            muteBtn.className = 'mini-btn ap-mute' + (entry.muted ? ' danger' : '');
+            muteBtn.textContent = entry.muted ? '🔇' : '🔊';
+            sendBridge({ cmd: 'setAppMute', pid: ap.pid, mute: entry.muted });
+          });
+
+          mBox.appendChild(row);
+        }
+
+        entry.titleEl.innerHTML = `${ap.name} <span style="color:var(--muted);font-weight:400;">(#${ap.pid})</span>`;
+        entry.muted = !!ap.muted;
+        entry.muteBtn.className = 'mini-btn ap-mute' + (entry.muted ? ' danger' : '');
+        entry.muteBtn.textContent = entry.muted ? '🔇' : '🔊';
+        if (draggingSlider !== entry.sliderEl) {
+          entry.sliderEl.value = ap.vol;
+          entry.valEl.textContent = ap.vol + '%';
+        }
+      });
+
+      // Rimuove sessioni chiuse
+      for (const [pid, entry] of appMixerRows.entries()) {
+        if (!activePids.has(pid)) {
+          entry.row.remove();
+          appMixerRows.delete(pid);
+        }
       }
     }
 
@@ -2139,7 +2395,7 @@
       }
 
       // Volume Master (aggiorna solo se l'utente non sta trascinando lo slider volume)
-      if (d.vol !== undefined && draggingSlider !== mVolRange && draggingSlider !== document.getElementById('mixMasterSlider')) {
+      if (d.vol !== undefined && draggingSlider !== mVolRange && draggingSlider !== mixMasterSlider) {
         paintMasterVol(d.vol, d.muted);
       }
 
@@ -2152,45 +2408,21 @@
         bars[i].style.height = wave + '%';
       }
 
-      // Per-App Audio Mixer
+      // Per-App Audio Mixer (riconciliazione DOM senza distruggere gli slider sotto il dito)
       if (Array.isArray(d.apps)) {
-        document.getElementById('appCountLbl').textContent = `${d.apps.length} sessioni`;
-        const mBox = document.getElementById('appMixerBox');
-        if (d.apps.length === 0) {
-          mBox.innerHTML = `<div style="font-size:12px; color:var(--muted); padding:8px;">Nessuna applicazione audio attiva al momento.</div>`;
-        } else {
-          mBox.innerHTML = d.apps.map((ap) => `
-            <div class="mixer-row">
-              <div class="mixer-top">
-                <span style="font-weight:600;">${ap.name} <span style="color:var(--muted);font-weight:400;">(#${ap.pid})</span></span>
-                <div style="display:flex; align-items:center; gap:6px;">
-                  <span style="font-size:11px; color:rgb(var(--accent));">${ap.vol}%</span>
-                  <button class="mini-btn ${ap.muted ? 'danger' : ''}" onclick="sendBridge({cmd:'setAppMute', pid:${ap.pid}, mute:${!ap.muted}})">
-                    ${ap.muted ? '🔇' : '🔊'}
-                  </button>
-                </div>
-              </div>
-              <input class="range-slider" type="range" min="0" max="100" value="${ap.vol}"
-                onchange="sendBridge({cmd:'setAppVolume', pid:${ap.pid}, value:Number(this.value)})" />
-            </div>
-          `).join('');
-        }
+        reconcileAppMixer(d.apps);
       }
 
-      // Luminosità Doppio Monitor (aggiorna solo se l'utente non sta trascinando il relativo slider)
-      const intSl = document.getElementById('intBrightSlider');
-      const extSl = document.getElementById('extBrightSlider');
+      // Luminosità Doppio Monitor (4 pulsanti fissi 25% / 50% / 75% / 100%)
       const intB = (d.brightnessInt !== undefined) ? d.brightnessInt : d.brightness;
-      if (intB !== undefined && intB >= 0 && draggingSlider !== intSl) {
-        document.getElementById('intBrightLbl').textContent = intB + '%';
-        intSl.value = intB;
+      if (intB !== undefined && intB >= 0 && Date.now() >= brightLockUntilInt) {
+        paintMonitorPresets('internal', intB);
       }
       if (d.extMonitorName) {
         document.getElementById('extMonTitle').textContent = `🖥️ ${d.extMonitorName}`;
       }
-      if (d.brightnessExt !== undefined && d.brightnessExt >= 0 && draggingSlider !== extSl) {
-        document.getElementById('extBrightLbl').textContent = d.brightnessExt + '%';
-        extSl.value = d.brightnessExt;
+      if (d.brightnessExt !== undefined && d.brightnessExt >= 0 && Date.now() >= brightLockUntilExt) {
+        paintMonitorPresets('external', d.brightnessExt);
       }
 
       // Finestre Attive
