@@ -568,6 +568,7 @@ try {
 # Cache per la Thumbnail SMTC (con finestra di 8s per attendere le miniature ritardate di Chrome/Freefy come MediaArtworkCache.cs)
 $script:lastTrackKey = ""
 $script:lastTrackTime = [DateTime]::MinValue
+$script:lastPrevTapTime = [DateTime]::MinValue
 $script:cachedArtData = ""
 $script:cachedArtId = 0
 $script:sentArtId = -1
@@ -665,13 +666,21 @@ function Handle-PhoneCommand([string]$jsonLine) {
                                 }
                             }
                             'prev' {
-                                if ($null -ne $ctrls -and $ctrls.IsPreviousEnabled -and ($null -eq $tl -or $tl.Position.TotalSeconds -le 4)) {
-                                    $null = Invoke-WinRtAwait ($s.TrySkipPreviousAsync()) ([bool])
-                                } elseif ($null -ne $ctrls -and $ctrls.IsPlaybackPositionEnabled) {
-                                    Write-Host "     [MEDIA-CTRL] Riavvolgo il brano a 0:00 (Seek=0)" -ForegroundColor Yellow
+                                $nowPrev = [DateTime]::UtcNow
+                                $isDoublePrev = (($nowPrev - $script:lastPrevTapTime).TotalSeconds -le 3.5)
+                                $script:lastPrevTapTime = $nowPrev
+                                $nearStart = ($null -eq $tl -or $tl.Position.TotalSeconds -le 4.0)
+
+                                if (-not $isDoublePrev -and -not $nearStart -and $null -ne $ctrls -and $ctrls.IsPlaybackPositionEnabled) {
+                                    Write-Host "     [MEDIA-CTRL] 1° tap Indietro (>4s) -> Riavvolgo il brano a 0:00 (Seek=0)" -ForegroundColor Yellow
                                     $null = Invoke-WinRtAwait ($s.TryChangePlaybackPositionAsync(0L)) ([bool])
                                 } else {
-                                    $null = Invoke-WinRtAwait ($s.TrySkipPreviousAsync()) ([bool])
+                                    Write-Host "     [MEDIA-CTRL] 2° tap Indietro (o inizio brano) -> Invio TrySkipPreviousAsync()" -ForegroundColor Cyan
+                                    $okPrev = Invoke-WinRtAwait ($s.TrySkipPreviousAsync()) ([bool])
+                                    if ((-not $okPrev -or ($null -ne $ctrls -and -not $ctrls.IsPreviousEnabled)) -and $null -ne $ctrls -and $ctrls.IsPlaybackPositionEnabled) {
+                                        Write-Host "     [MEDIA-CTRL] Nota: questo sito web (PrevEnabled=False) non espone la traccia precedente a Windows; riavvolgo a 0:00." -ForegroundColor DarkYellow
+                                        $null = Invoke-WinRtAwait ($s.TryChangePlaybackPositionAsync(0L)) ([bool])
+                                    }
                                 }
                             }
                             'seek' {
