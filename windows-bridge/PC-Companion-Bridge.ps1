@@ -1,16 +1,16 @@
 <#
 .SYNOPSIS
-    PC-Companion Bridge (v1.2.1) - Script PowerShell user-space per Pixel 6a
+    PC-Companion Bridge (v1.3.0) - Script PowerShell user-space per Pixel 6a
     Comunica bidirezionalmente via Bluetooth RFCOMM nativo (Winsock AF_BTH)
     Include:
       - Auto-terminazione istanze precedenti dello script
-      - Windows SMTC (GlobalSystemMediaTransportControlsSessionManager) + CoreAudio Peak per Now Playing reale
+      - Replica completa del MediaMonitor di PhoneBox (Windows SMTC Playing + Paused, Timeline PosMs/DurMs, Seek e Thumbnail JPEG Base64 con cache per traccia)
       - Doppio Monitor rapido: Interno (WMI) + Esterno Dell S3422DW (DDC/CI VCP 0x10 con filtro GetMonitorInfo)
 #>
 
 $ErrorActionPreference = 'SilentlyContinue'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-$Host.UI.RawUI.WindowTitle = "PC-Companion Bridge v1.2.1 (Bluetooth RFCOMM)"
+$Host.UI.RawUI.WindowTitle = "PC-Companion Bridge v1.3.0 (Bluetooth RFCOMM)"
 
 # 0. Termina automaticamente eventuali vecchie istanze di PC-Companion-Bridge.ps1 rimaste in background
 Get-CimInstance Win32_Process -Filter "Name = 'powershell.exe'" | Where-Object {
@@ -21,15 +21,21 @@ Get-CimInstance Win32_Process -Filter "Name = 'powershell.exe'" | Where-Object {
 }
 
 Write-Host "================================================================" -ForegroundColor Cyan
-Write-Host "   PC-COMPANION BRIDGE v1.2.1 - Telemetria, SMTC & 2 Monitor    " -ForegroundColor Cyan
+Write-Host "   PC-COMPANION BRIDGE v1.3.0 - Media SMTC + Art & 2 Monitor    " -ForegroundColor Cyan
 Write-Host "   Connessione diretta Bluetooth RFCOMM (Zero ADB / Zero Admin) " -ForegroundColor Gray
 Write-Host "================================================================" -ForegroundColor Cyan
 Write-Host ""
+
+Add-Type -AssemblyName System.Drawing
 
 $csCode = @'
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Drawing;
+using System.Drawing.Drawing2D;
+using System.Drawing.Imaging;
+using System.IO;
 using System.Net;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
@@ -75,6 +81,34 @@ public class PcCompanionNative {
         s.SendTimeout = 3000;
         s.Connect(new BtRfcommEndPoint(btAddr, uuid));
         return s;
+    }
+
+    // Ridimensiona un'immagine Stream in un quadrato JPEG 112x112 Base64 leggero (~3 KB) per invio istantaneo su Bluetooth
+    public static string StreamToThumbnailDataUri(Stream inputStream, int size) {
+        try {
+            using (var srcImg = Image.FromStream(inputStream)) {
+                using (var bmp = new Bitmap(size, size)) {
+                    using (var g = Graphics.FromImage(bmp)) {
+                        g.InterpolationMode = InterpolationMode.HighQualityBicubic;
+                        g.SmoothingMode = SmoothingMode.HighQuality;
+                        g.PixelOffsetMode = PixelOffsetMode.HighQuality;
+                        // Ritaglia al centro (center-crop) se rettangolare (es. miniatura YouTube 16:9)
+                        int srcW = srcImg.Width;
+                        int srcH = srcImg.Height;
+                        int crop = Math.Min(srcW, srcH);
+                        int sx = (srcW - crop) / 2;
+                        int sy = (srcH - crop) / 2;
+                        g.DrawImage(srcImg, new Rectangle(0, 0, size, size), new Rectangle(sx, sy, crop, crop), GraphicsUnit.Pixel);
+                    }
+                    using (var ms = new MemoryStream()) {
+                        bmp.Save(ms, ImageFormat.Jpeg);
+                        return "data:image/jpeg;base64," + Convert.ToBase64String(ms.ToArray());
+                    }
+                }
+            }
+        } catch {
+            return "";
+        }
     }
 
     // --- CoreAudio COM Interfaces ---
@@ -201,8 +235,8 @@ public class PcCompanionNative {
         public string name;
         public int vol;
         public bool muted;
-        public int state; // 0 = Inactive, 1 = Active, 2 = Expired
-        public float peak; // 0.0 .. 1.0 real-time audio stream peak
+        public int state;
+        public float peak;
     }
 
     public static List<AppAudioInfo> GetAudioSessions() {
@@ -232,9 +266,7 @@ public class PcCompanionNative {
                 bool m; sav.GetMute(out m);
                 float pk = 0f;
                 var meter = ctl as IAudioMeterInformation;
-                if (meter != null) {
-                    meter.GetPeakValue(out pk);
-                }
+                if (meter != null) meter.GetPeakValue(out pk);
                 string pName = null;
                 try {
                     var p = Process.GetProcessById((int)pid);
@@ -348,7 +380,6 @@ public class PcCompanionNative {
             dd.cb = Marshal.SizeOf(dd);
             if (!EnumDisplayDevices(mi.szDevice, 0, ref dd, 0)) return true;
 
-            // Skip internal laptop display (CMN1512 / Generic PnP Monitor) so we only open DDC/CI on external monitor!
             if (dd.DeviceID.IndexOf("CMN", StringComparison.OrdinalIgnoreCase) >= 0 ||
                 dd.DeviceString.IndexOf("Generic", StringComparison.OrdinalIgnoreCase) >= 0 ||
                 dd.DeviceString.IndexOf("generico", StringComparison.OrdinalIgnoreCase) >= 0) {
@@ -477,30 +508,38 @@ public class PcCompanionNative {
 }
 '@
 
-Add-Type -TypeDefinition $csCode -Language CSharp
+Add-Type -TypeDefinition $csCode -Language CSharp -ReferencedAssemblies System.Drawing
 
-# Inizializza Windows SMTC (GlobalSystemMediaTransportControlsSessionManager) - il sistema usato dai dispositivi commerciali (Stream Deck, ecc.)
+# Inizializza Windows SMTC (GlobalSystemMediaTransportControlsSessionManager) + Stream Thumbnail
 $script:smtcManager = $null
 $script:asTaskGeneric = $null
 try {
     Add-Type -AssemblyName System.Runtime.WindowsRuntime
     $null = [Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager, Windows.Media.Control, ContentType = WindowsRuntime]
     $null = [Windows.Media.Control.GlobalSystemMediaTransportControlsSessionMediaProperties, Windows.Media.Control, ContentType = WindowsRuntime]
+    $null = [Windows.Storage.Streams.IRandomAccessStreamWithContentType, Windows.Storage.Streams, ContentType = WindowsRuntime]
     $null = [Windows.Foundation.IAsyncOperation`1, Windows.Foundation, ContentType = WindowsRuntime]
+    $null = [System.IO.WindowsRuntimeStreamExtensions]
     $script:asTaskGeneric = ([System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object {
         $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`1'
     })[0]
     function Invoke-WinRtAwait($WinRtTask, $ResultType) {
         $asTask = $script:asTaskGeneric.MakeGenericMethod($ResultType)
         $netTask = $asTask.Invoke($null, @($WinRtTask))
-        $netTask.Wait(400) | Out-Null
+        $netTask.Wait(500) | Out-Null
         return $netTask.Result
     }
     $script:smtcManager = Invoke-WinRtAwait ([Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager]::RequestAsync()) ([Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager])
-    Write-Host "[OK] Windows SMTC (Media Session Manager) attivo." -ForegroundColor Green
+    Write-Host "[OK] Windows SMTC (Media Session Manager + Thumbnail) attivo." -ForegroundColor Green
 } catch {
-    Write-Host "[INFO] Windows SMTC non disponibile, uso rilevamento picco CoreAudio." -ForegroundColor DarkGray
+    Write-Host "[INFO] Windows SMTC non disponibile: $($_.Exception.Message)" -ForegroundColor DarkGray
 }
+
+# Cache per la Thumbnail SMTC (così la inviamo sul Bluetooth solo quando cambia il brano!)
+$script:lastTrackKey = ""
+$script:cachedArtData = ""
+$script:cachedArtId = 0
+$script:sentArtId = -1
 
 # Legge all'avvio la luminosità reale del monitor esterno Dell S3422DW
 $script:cachedExtBrightness = [PcCompanionNative]::ReadExternalBrightness()
@@ -513,6 +552,18 @@ if ($script:cachedExtBrightness -ge 0) {
 $SERVICE_UUID = [Guid]::Parse("8ce255c0-200a-11e0-ac64-0800200c9a66")
 $script:cachedDisks = @()
 $script:lastDiskTick = 0
+
+function Friendly-AppName([string]$appId) {
+    if (-not $appId) { return "Media" }
+    $l = $appId.ToLowerInvariant()
+    if ($l -match 'spotify') { return "Spotify" }
+    if ($l -match 'chrome')  { return "Chrome" }
+    if ($l -match 'firefox|308046b0af4a39cb') { return "Firefox" }
+    if ($l -match 'msedge')  { return "Edge" }
+    if ($l -match 'vlc')     { return "VLC" }
+    if ($l -match 'zune|music') { return "Media Player" }
+    return [System.IO.Path]::GetFileNameWithoutExtension(($appId -split '!')[0])
+}
 
 function Find-PixelBluetoothAddress {
     $btDevs = Get-CimInstance Win32_PnPEntity | Where-Object {
@@ -543,11 +594,30 @@ function Handle-PhoneCommand([string]$jsonLine) {
             'toggleMasterMute' {
                 [PcCompanionNative]::ToggleMasterMute()
             }
+            'refreshArt' {
+                $script:sentArtId = -1
+            }
             'setAppVolume' {
                 [PcCompanionNative]::SetAppAudio([int]$cmdObj.pid, [int]$cmdObj.value, $null)
             }
             'setAppMute' {
                 [PcCompanionNative]::SetAppAudio([int]$cmdObj.pid, $null, [bool]$cmdObj.mute)
+            }
+            'mediaControl' {
+                if ($null -ne $script:smtcManager) {
+                    $s = $script:smtcManager.GetCurrentSession()
+                    if ($null -ne $s) {
+                        switch ($cmdObj.action) {
+                            'playpause' { $null = Invoke-WinRtAwait ($s.TryTogglePlayPauseAsync()) ([bool]) }
+                            'next'      { $null = Invoke-WinRtAwait ($s.TrySkipNextAsync()) ([bool]) }
+                            'prev'      { $null = Invoke-WinRtAwait ($s.TrySkipPreviousAsync()) ([bool]) }
+                            'seek'      {
+                                $ticks = [TimeSpan]::FromMilliseconds([double]$cmdObj.ms).Ticks
+                                $null = Invoke-WinRtAwait ($s.TryChangePlaybackPositionAsync($ticks)) ([bool])
+                            }
+                        }
+                    }
+                }
             }
             'killProcess' {
                 Stop-Process -Id ([int]$cmdObj.pid) -Force -ErrorAction SilentlyContinue
@@ -612,51 +682,98 @@ function Handle-PhoneCommand([string]$jsonLine) {
     }
 }
 
-function Get-CommercialNowPlaying($sessionsRaw) {
-    # Verifica quali processi stanno effettivamente emettendo campioni audio (state == 1 e peak > 0.001)
-    $streamingProcs = @{}
-    foreach ($s in $sessionsRaw) {
-        if ($s.state -eq 1 -and $s.peak -gt 0.0008) {
-            $streamingProcs[$s.name.ToLower()] = $true
+# Replica esatta di MediaMonitor.cs di PhoneBox:
+# Supporta sia Playing sia Paused, calcola PosMs/DurMs dalla timeline SMTC ed estrae la Thumbnail 112x112 al cambio traccia
+function Get-PhoneBoxMediaSnapshot {
+    if ($null -eq $script:smtcManager) { return $null }
+    try {
+        $s = $script:smtcManager.GetCurrentSession()
+        if ($null -eq $s) {
+            $script:lastTrackKey = ""
+            $script:cachedArtData = ""
+            return $null
         }
-    }
+        $pb = $s.GetPlaybackInfo()
+        if ($null -eq $pb) { return $null }
+        $stStr = $pb.PlaybackStatus.ToString()
+        # Accetta sia Playing sia Paused! Se invece la sorgente è Closed/Stopped senza titolo, ritorna null
+        if ($stStr -ne 'Playing' -and $stStr -ne 'Paused') {
+            return $null
+        }
+        $playing = ($stStr -eq 'Playing')
+        $props = Invoke-WinRtAwait ($s.TryGetMediaPropertiesAsync()) ([Windows.Media.Control.GlobalSystemMediaTransportControlsSessionMediaProperties])
+        if ($null -eq $props -or [string]::IsNullOrWhiteSpace($props.Title)) {
+            return $null
+        }
 
-    # 1. Metodo Commerciale Primario: Windows SMTC (GlobalSystemMediaTransportControlsSessionManager)
-    # Si aggancia SOLO alle vere sessioni multimediali in riproduzione (PlaybackStatus == Playing)
-    if ($null -ne $script:smtcManager) {
+        $appName = Friendly-AppName $s.SourceAppUserModelId
+        $title   = ($props.Title + "").Trim()
+        $artist  = ($props.Artist + "").Trim()
+        $album   = ($props.AlbumTitle + "").Trim()
+
+        # Calcolo posizione e durata dalla Timeline SMTC (come MediaMonitor.cs righe 76, 95-101)
+        $posMs = 0; $durMs = 0; $canSeek = $false
         try {
-            foreach ($smtc in $script:smtcManager.GetSessions()) {
-                $pInfo = $smtc.GetPlaybackInfo()
-                if ($null -ne $pInfo -and $pInfo.PlaybackStatus.ToString() -eq 'Playing') {
-                    $props = Invoke-WinRtAwait ($smtc.TryGetMediaPropertiesAsync()) ([Windows.Media.Control.GlobalSystemMediaTransportControlsSessionMediaProperties])
-                    if ($null -ne $props -and -not [string]::IsNullOrWhiteSpace($props.Title)) {
-                        $srcApp = ($smtc.SourceAppUserModelId -replace '\.exe$', '')
-                        $sub = if (-not [string]::IsNullOrWhiteSpace($props.Artist)) { "$($props.Artist) · $srcApp" } else { $srcApp }
-                        return @{ title = $props.Title.Trim(); app = $sub }
-                    }
+            $tl = $s.GetTimelineProperties()
+            if ($null -ne $tl) {
+                $pos = $tl.Position
+                if ($playing -and $tl.LastUpdatedTime.Year -gt 2000) {
+                    $pos = $pos + ([DateTimeOffset]::Now - $tl.LastUpdatedTime)
                 }
+                $dur = $tl.EndTime - $tl.StartTime
+                if ($dur -gt [TimeSpan]::Zero -and $pos -gt $dur) { $pos = $dur }
+                if ($pos -lt [TimeSpan]::Zero) { $pos = [TimeSpan]::Zero }
+                $posMs = [long][math]::Round($pos.TotalMilliseconds, 0)
+                $durMs = [long][math]::Max(0, [math]::Round($dur.TotalMilliseconds, 0))
+            }
+            if ($null -ne $pb.Controls) {
+                $canSeek = [bool]$pb.Controls.IsPlaybackPositionEnabled
             }
         } catch {}
-    }
 
-    # 2. Fallback per player desktop che non usano SMTC (es. VLC classico / Winamp / Foobar) SOLO se stanno emettendo suono reale (peak > 0.001)
-    if ($streamingProcs.Count -gt 0) {
-        foreach ($w in [PcCompanionNative]::GetOpenWindows()) {
-            $pLower = ($w.proc + "").ToLower()
-            if ($streamingProcs.ContainsKey($pLower) -and $pLower -match '^(spotify|vlc|foobar2000|aimp|wmplayer|music\.ui)$') {
-                $clean = $w.title -replace '\s*-\s*(VLC media player|foobar2000)$', ''
-                if ($clean -and $clean -ne $w.proc) {
-                    return @{ title = $clean; app = $w.proc }
-                }
+        # Estrazione Thumbnail al cambio traccia (o se non ancora letta perché stava caricando)
+        $key = "$($s.SourceAppUserModelId)|$title|$artist"
+        if ($key -ne $script:lastTrackKey -or ([string]::IsNullOrEmpty($script:cachedArtData) -and $null -ne $props.Thumbnail)) {
+            $script:lastTrackKey = $key
+            $newArt = ""
+            if ($null -ne $props.Thumbnail) {
+                try {
+                    $winrtStream = Invoke-WinRtAwait ($props.Thumbnail.OpenReadAsync()) ([Windows.Storage.Streams.IRandomAccessStreamWithContentType])
+                    if ($null -ne $winrtStream -and $winrtStream.Size -gt 0 -and $winrtStream.Size -lt 8388608) {
+                        $netStream = [System.IO.WindowsRuntimeStreamExtensions]::AsStreamForRead($winrtStream)
+                        $newArt = [PcCompanionNative]::StreamToThumbnailDataUri($netStream, 112)
+                        $netStream.Dispose()
+                        $winrtStream.Dispose()
+                    }
+                } catch {}
+            }
+            if ($newArt -ne $script:cachedArtData) {
+                $script:cachedArtData = $newArt
+                $script:cachedArtId++
             }
         }
-    }
 
-    return @{ title = ""; app = "" }
+        $includeArt = ($script:sentArtId -ne $script:cachedArtId)
+        if ($includeArt) { $script:sentArtId = $script:cachedArtId }
+
+        return @{
+            app     = $appName
+            title   = $title
+            artist  = $artist
+            album   = $album
+            playing = $playing
+            posMs   = $posMs
+            durMs   = $durMs
+            canSeek = $canSeek
+            artId   = $script:cachedArtId
+            artData = if ($includeArt) { $script:cachedArtData } else { $null }
+        }
+    } catch {
+        return $null
+    }
 }
 
 function Build-TelemetryJson {
-    # 1. CPU & RAM
     $os = Get-CimInstance Win32_OperatingSystem
     $cpuLoad = (Get-CimInstance Win32_Processor | Measure-Object -Property LoadPercentage -Average).Average
     if ($null -eq $cpuLoad) { $cpuLoad = 0 }
@@ -671,7 +788,6 @@ function Build-TelemetryJson {
     $upSpan = (Get-Date) - $os.LastBootUpTime
     $uptimeStr = "{0}g {1}h {2}m" -f $upSpan.Days, $upSpan.Hours, $upSpan.Minutes
 
-    # Rete KB/s
     $netDownKbs = 0; $netUpKbs = 0
     try {
         $netStat = Get-CimInstance Win32_PerfFormattedData_Tcpip_NetworkInterface | Select-Object -First 1
@@ -681,7 +797,6 @@ function Build-TelemetryJson {
         }
     } catch {}
 
-    # Dischi (aggiornati ogni 10 cicli)
     if ($script:lastDiskTick % 10 -eq 0) {
         $script:cachedDisks = @(Get-CimInstance Win32_LogicalDisk -Filter "DriveType=3" | ForEach-Object {
             $tot = [math]::Round($_.Size / 1GB, 0)
@@ -693,7 +808,6 @@ function Build-TelemetryJson {
     }
     $script:lastDiskTick++
 
-    # Top Processi
     $procs = @(Get-Process | Sort-Object WorkingSet64 -Descending | Select-Object -First 10 | ForEach-Object {
         @{
             pid   = $_.Id
@@ -703,7 +817,6 @@ function Build-TelemetryJson {
         }
     })
 
-    # CoreAudio Master & Sessioni per singola App
     $vol = 50; $muted = $false; $peak = 0
     [PcCompanionNative]::GetMasterAudio([ref]$vol, [ref]$muted, [ref]$peak)
     $sessionsRaw = [PcCompanionNative]::GetAudioSessions()
@@ -711,16 +824,14 @@ function Build-TelemetryJson {
         @{ pid = $_.pid; name = $_.name; vol = $_.vol; muted = $_.muted }
     })
 
-    # Rilevamento Now Playing intelligente tramite Windows SMTC + CoreAudio Peak
-    $np = Get-CommercialNowPlaying $sessionsRaw
+    # Snapshot Media SMTC completo (con stato Playing/Paused, Timeline e Thumbnail)
+    $mediaSnap = Get-PhoneBoxMediaSnapshot
 
-    # Finestre Desktop
     $winsRaw = [PcCompanionNative]::GetOpenWindows()
     $windows = @($winsRaw | ForEach-Object {
         @{ hwnd = $_.hwnd; title = $_.title; proc = $_.proc }
     })
 
-    # Luminosità Monitor Interno Portatile (WMI)
     $brightInt = -1
     try {
         $bObj = Get-CimInstance -Namespace root\wmi -ClassName WmiMonitorBrightness -ErrorAction SilentlyContinue
@@ -742,8 +853,7 @@ function Build-TelemetryJson {
         vol            = $vol
         muted          = $muted
         peak           = $peak
-        mediaTitle     = $np.title
-        mediaApp       = $np.app
+        media          = $mediaSnap
         apps           = $apps
         windows        = $windows
         brightnessInt  = $brightInt
@@ -766,7 +876,10 @@ while ($true) {
         $writer.AutoFlush = $true
         $reader = New-Object System.IO.StreamReader($stream, [System.Text.Encoding]::UTF8)
 
-        Write-Host "[CONNESSO] Streaming telemetria, SMTC Media e doppio monitor attivo verso il Pixel 6a!" -ForegroundColor Green
+        # Ad ogni nuova connessione invia anche la thumbnail corrente
+        $script:sentArtId = -1
+
+        Write-Host "[CONNESSO] Streaming telemetria, Media SMTC + Copertina e 2 Monitor attivo verso il Pixel 6a!" -ForegroundColor Green
 
         while ($sock.Connected) {
             $json = Build-TelemetryJson

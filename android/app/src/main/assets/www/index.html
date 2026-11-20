@@ -14,6 +14,7 @@
       --muted: #8a94a3;
       --dim: #5b6472;
       --accent: 45, 212, 191;
+      --ambient: 45, 212, 191;
       --ok: #22c55e;
       --warn: #f59e0b;
       --err: #ef4444;
@@ -61,7 +62,6 @@
       color: var(--text);
       font-family: Roboto, "Segoe UI", system-ui, sans-serif;
       font-variant-numeric: tabular-nums;
-      touch-action: pan-y;
     }
 
     body[data-theme="default"]::before,
@@ -89,10 +89,10 @@
     #appShell {
       width: 100vw;
       height: 100vh;
-      padding: 10px var(--pad-r) 12px var(--pad-l);
+      padding: 8px 0 0 0;
       display: flex;
       flex-direction: column;
-      gap: 10px;
+      gap: 6px;
       transform: translate(var(--shift-x), var(--shift-y));
       transition: transform 2.2s cubic-bezier(0.4, 0, 0.2, 1);
     }
@@ -161,6 +161,7 @@
       justify-content: space-between;
       gap: 8px;
       flex-shrink: 0;
+      padding: 0 var(--pad-r) 0 var(--pad-l);
     }
     .status-pills {
       display: flex;
@@ -239,28 +240,53 @@
       background: rgb(var(--accent));
     }
 
-    /* --- Pages Container (Swipeable) --- */
-    .pages-wrap {
+    /* --- Native CSS Scroll Snap Pager (copiato dal sorgente di PhoneBox) --- */
+    #pager {
+      position: relative;
       flex: 1;
       min-height: 0;
-      position: relative;
-      overflow: hidden;
+      width: 100vw;
+      display: flex;
+      overflow-x: auto;
+      overflow-y: hidden;
+      scroll-snap-type: x mandatory;
+      scrollbar-width: none;
+      overscroll-behavior: contain;
     }
-    .page-view {
-      position: absolute;
-      inset: 0;
-      display: none;
+    #pager::-webkit-scrollbar { display: none; }
+
+    .page {
+      flex: 0 0 100vw;
+      width: 100vw;
+      height: 100%;
+      scroll-snap-align: start;
+      scroll-snap-stop: always;
+      padding: 2px var(--pad-r) 12px var(--pad-l);
+      display: grid;
       grid-template-columns: 5fr 6fr;
       gap: 14px;
       min-height: 0;
-      animation: fadeSlide 0.22s ease-out;
     }
-    @keyframes fadeSlide {
-      from { opacity: 0.45; transform: scale(0.99); }
-      to   { opacity: 1; transform: scale(1); }
+
+    #ptitle {
+      position: fixed;
+      left: 50%;
+      top: 40px;
+      transform: translate(-50%, -8px);
+      z-index: 35;
+      padding: 5px 14px;
+      border-radius: 99px;
+      font-size: 12.5px;
+      font-weight: 600;
+      background: rgba(16, 20, 26, 0.94);
+      border: 1px solid var(--line);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s ease, transform 0.2s ease;
     }
-    .page-view.active {
-      display: grid;
+    #ptitle.on {
+      opacity: 1;
+      transform: translate(-50%, 0);
     }
 
     .col-pane {
@@ -329,38 +355,250 @@
       text-overflow: ellipsis;
     }
 
-    /* Banner Now Playing: posizionato tra la griglia media e lo slider volume, nascosto se non c'è audio attivo */
-    .now-playing-bar {
-      display: none;
-      align-items: center;
-      justify-content: space-between;
-      gap: 10px;
-      padding: 7px 11px;
-      border-radius: 13px;
-      background: linear-gradient(90deg, rgba(var(--accent), 0.15), rgba(255, 255, 255, 0.03));
-      border: 1px solid rgba(var(--accent), 0.34);
-      flex-shrink: 0;
-    }
-    .now-playing-bar.visible {
+    /* --- Card Media W.media (copiata dal sorgente di PhoneBox: style.css righe 289-344) --- */
+    .w-media {
+      position: relative;
+      flex: 1;
+      min-width: 0;
+      min-height: 0;
+      overflow: hidden;
+      container-type: size;
+      background:
+        radial-gradient(85% 95% at 22% 24%, rgba(var(--ambient), 0.16), transparent 72%),
+        var(--card);
+      border: 1px solid var(--line);
+      border-radius: clamp(14px, 7cqmin, 20px);
+      padding: clamp(10px, 5cqh, 18px) clamp(12px, 3.5cqw, 20px);
       display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: 6px;
     }
-    .np-meta {
+    .m-top {
+      display: flex;
+      gap: clamp(10px, 3.2cqw, 18px);
+      min-width: 0;
+      min-height: 0;
+      flex: 1;
+      align-items: center;
+    }
+    .art-wrap {
+      position: relative;
+      flex: 0 0 auto;
+      height: min(58cqh, 34cqw);
+      max-height: 100%;
+      aspect-ratio: 1;
+      border-radius: clamp(10px, 6cqh, 18px);
+      overflow: hidden;
+      background: linear-gradient(135deg, rgba(var(--ambient), 0.35), rgba(255, 255, 255, 0.04));
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.48);
+    }
+    .art-wrap img {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      opacity: 0;
+      transition: opacity 0.45s ease;
+      z-index: 2;
+    }
+    .art-wrap img.on {
+      opacity: 1;
+    }
+    .art-ph {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      font-size: 34px;
+      color: rgba(255, 255, 255, 0.5);
+      z-index: 1;
+    }
+    .m-text {
       min-width: 0;
       flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 3px;
     }
-    .np-title {
-      font-size: 12.5px;
+    .m-app {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      font-size: clamp(9.5px, 4.5cqh, 13px);
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: rgb(var(--ambient));
       font-weight: 600;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
     }
-    .np-sub {
-      font-size: 10.5px;
+    .m-source-icon {
+      display: inline-flex;
+      flex: 0 0 auto;
+    }
+    .m-source-icon:empty {
+      display: none;
+    }
+    .m-source-icon svg {
+      width: 1.25em;
+      height: 1.25em;
+      display: block;
+    }
+    .m-title {
+      font-size: clamp(14px, 9cqh, 28px);
+      font-weight: 600;
+      line-height: 1.2;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .m-artist {
+      font-size: clamp(11.5px, 6cqh, 17.5px);
       color: var(--muted);
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
+    }
+    .m-progress {
+      flex-shrink: 0;
+    }
+    .bar {
+      position: relative;
+      height: 18px;
+      display: flex;
+      align-items: center;
+      cursor: pointer;
+      touch-action: none;
+    }
+    .bar::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      right: 0;
+      height: 4px;
+      border-radius: 2px;
+      background: rgba(255, 255, 255, 0.12);
+    }
+    .fill {
+      position: relative;
+      height: 4px;
+      border-radius: 2px;
+      background: var(--text);
+      width: 0%;
+    }
+    .fill::after {
+      content: "";
+      position: absolute;
+      right: -5px;
+      top: -3px;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--text);
+    }
+    .times {
+      display: flex;
+      justify-content: space-between;
+      font-size: 11px;
+      color: var(--muted);
+      margin-top: -1px;
+    }
+    .m-controls {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      flex-shrink: 0;
+    }
+    .ic {
+      width: 44px;
+      height: 44px;
+      flex: 0 0 auto;
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      transition: transform 0.12s ease, background 0.2s ease;
+    }
+    .ic svg {
+      width: 24px;
+      height: 24px;
+      fill: currentColor;
+    }
+    .ic:active {
+      transform: scale(0.88);
+      background: var(--card-hi);
+    }
+    .ic.play {
+      width: 52px;
+      height: 52px;
+      background: var(--text);
+      color: #0b0d10;
+    }
+    .ic.play svg {
+      width: 26px;
+      height: 26px;
+    }
+    .ic.sm {
+      width: 34px;
+      height: 34px;
+    }
+    .ic.sm svg {
+      width: 20px;
+      height: 20px;
+    }
+    .i-pause, .playing .i-play { display: none; }
+    .playing .i-pause { display: block; }
+    .i-mute, .muted-on .i-vol { display: none; }
+    .muted-on .i-mute { display: block; color: var(--err); }
+    .vol {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      margin-left: 4px;
+      min-width: 0;
+    }
+    .vol-val {
+      font-size: 11.5px;
+      color: var(--muted);
+      width: 24px;
+      text-align: right;
+    }
+    input[type=range].volr {
+      -webkit-appearance: none;
+      appearance: none;
+      flex: 1;
+      min-width: 0;
+      height: 28px;
+      background: transparent;
+      outline: none;
+      touch-action: none;
+    }
+    input[type=range].volr::-webkit-slider-runnable-track {
+      height: 4px;
+      border-radius: 2px;
+      background: linear-gradient(to right, var(--text) var(--p, 50%), rgba(255, 255, 255, 0.14) var(--p, 50%));
+    }
+    input[type=range].volr::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: var(--text);
+      margin-top: -6px;
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+    }
+    .w-media.idle .m-progress,
+    .w-media.idle .m-controls .ic:not(.play):not(.mute) {
+      opacity: 0.38;
+    }
+    @container (min-height: 230px) and (min-width: 420px) {
+      .w-media .ic.play { width: 60px; height: 60px; }
+      .w-media .ic:not(.sm):not(.play) { width: 50px; height: 50px; }
     }
 
     .wx-card {
@@ -418,57 +656,6 @@
       gap: 1px;
     }
 
-    .media-grid {
-      flex: 1;
-      display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      grid-template-rows: repeat(2, minmax(0, 1fr));
-      gap: 8px;
-      min-height: 0;
-    }
-    .hid-key {
-      position: relative;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: 5px;
-      border-radius: 16px;
-      background: linear-gradient(160deg, rgba(var(--k, 255, 255, 255), 0.12), rgba(255, 255, 255, 0.02));
-      border: 1px solid rgba(var(--k, 255, 255, 255), 0.22);
-      color: var(--text);
-      transition: transform 0.1s ease, filter 0.15s ease;
-    }
-    .hid-key:active, .hid-key.active {
-      transform: scale(0.94);
-      filter: brightness(1.35);
-      box-shadow: inset 0 0 0 2px rgb(var(--accent));
-    }
-    .hid-key.play-btn {
-      background: linear-gradient(160deg, rgba(45, 212, 191, 0.24), rgba(45, 212, 191, 0.05));
-      border-color: rgba(45, 212, 191, 0.42);
-    }
-    .hid-key svg {
-      width: clamp(22px, 3.6vw, 30px);
-      height: clamp(22px, 3.6vw, 30px);
-      fill: currentColor;
-    }
-    .hid-key span {
-      font-size: clamp(11px, 1.45vw, 13px);
-      font-weight: 500;
-    }
-
-    /* Master Volume Bar on Home */
-    .vol-strip {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 7px 12px;
-      border-radius: 13px;
-      background: var(--card);
-      border: 1px solid var(--line);
-      flex-shrink: 0;
-    }
     .range-slider {
       -webkit-appearance: none;
       appearance: none;
@@ -549,6 +736,7 @@
     .scroll-list {
       flex: 1;
       overflow-y: auto;
+      touch-action: pan-y;
       display: flex;
       flex-direction: column;
       gap: 6px;
@@ -797,6 +985,9 @@
     </div>
   </div>
 
+  <!-- Toast titolo pagina (stile PhoneBox) -->
+  <div id="ptitle">Home &amp; Media</div>
+
   <!-- Contenitore Principale Soggetto a Pixel Shift Orbitale -->
   <div id="appShell">
 
@@ -827,21 +1018,21 @@
           <span id="rotLabel">Rotazione: Mai</span>
         </button>
 
-        <!-- Indicatori pagina (Swipe a destra/sinistra per cambiare schermata) -->
+        <!-- Indicatori pagina (Swipe nativo CSS Scroll Snap a destra/sinistra) -->
         <div class="page-dots" title="Scorri a destra o sinistra per cambiare pagina">
-          <span class="p-dot active" onclick="switchPage(0)"></span>
-          <span class="p-dot" onclick="switchPage(1)"></span>
-          <span class="p-dot" onclick="switchPage(2)"></span>
-          <span class="p-dot" onclick="switchPage(3)"></span>
+          <span class="p-dot active" onclick="goPage(0)"></span>
+          <span class="p-dot" onclick="goPage(1)"></span>
+          <span class="p-dot" onclick="goPage(2)"></span>
+          <span class="p-dot" onclick="goPage(3)"></span>
         </div>
       </div>
     </header>
 
-    <!-- CONTENITORE DELLE 4 PAGINE (SWIPE ORIZZONTALE) -->
-    <div id="pagesWrap" class="pages-wrap">
+    <!-- PAGER ORIZZONTALE NATIVO (CSS Scroll Snap copiato dal sorgente di PhoneBox) -->
+    <div id="pager">
 
-      <!-- ================= PAGINA 0: HOME & MEDIA ================= -->
-      <section class="page-view active" id="page0">
+      <!-- ================= PAGINA 0: HOME & MEDIA (Layout PhoneBox) ================= -->
+      <section class="page" id="page0">
         <div class="col-pane">
           <div class="clock-wrap sub-shift">
             <div class="clock-main">
@@ -866,71 +1057,60 @@
           </div>
         </div>
 
+        <!-- Tile di destra ristrutturata con il layout esatto di W.media di PhoneBox -->
         <div class="col-pane">
-          <div class="sec-head" style="margin-bottom:0;">
-            <span>Controlli Media &amp; Volume</span>
-            <span id="hidFeedback" style="color:rgb(var(--accent));">Scorri ⇆ per le altre schede</span>
-          </div>
-
-          <div class="media-grid">
-            <button class="hid-key" style="--k: 148, 163, 184;" onclick="triggerMedia(0x00B6, 'Precedente', this)">
-              <svg class="sub-shift" viewBox="0 0 24 24"><path d="M6 6h2v12H6zm3.5 6 8.5 6V6z"/></svg>
-              <span>Precedente</span>
-            </button>
-
-            <button class="hid-key play-btn" onclick="triggerMedia(0x00CD, 'Play / Pausa', this)">
-              <svg class="sub-shift" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
-              <span>Play / Pausa</span>
-            </button>
-
-            <button class="hid-key" style="--k: 148, 163, 184;" onclick="triggerMedia(0x00B5, 'Successiva', this)">
-              <svg class="sub-shift" viewBox="0 0 24 24"><path d="m6 18 8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>
-              <span>Successiva</span>
-            </button>
-
-            <button class="hid-key" style="--k: 56, 189, 248;"
-              onclick="triggerMedia(0x00EA, 'Volume −', this)"
-              onpointerdown="startRepeatMedia(0x00EA, 'Volume −', this)"
-              onpointerup="stopRepeatMedia()" onpointerleave="stopRepeatMedia()" onpointercancel="stopRepeatMedia()">
-              <svg class="sub-shift" viewBox="0 0 24 24"><path d="M18.5 12c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM5 9v6h4l5 5V4L9 9H5z"/></svg>
-              <span>Volume −</span>
-            </button>
-
-            <button class="hid-key" style="--k: 244, 63, 94;" onclick="triggerMedia(0x00E2, 'Mute Audio', this)">
-              <svg class="sub-shift" viewBox="0 0 24 24"><path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3 3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4 9.91 6.09 12 8.18V4z"/></svg>
-              <span>Mute</span>
-            </button>
-
-            <button class="hid-key" style="--k: 56, 189, 248;"
-              onclick="triggerMedia(0x00E9, 'Volume +', this)"
-              onpointerdown="startRepeatMedia(0x00E9, 'Volume +', this)"
-              onpointerup="stopRepeatMedia()" onpointerleave="stopRepeatMedia()" onpointercancel="stopRepeatMedia()">
-              <svg class="sub-shift" viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>
-              <span>Volume +</span>
-            </button>
-          </div>
-
-          <!-- Banner Now Playing Live: posizionato tra i comandi multimediali e lo slider del volume. Sparisce se non c'è nulla in riproduzione -->
-          <div id="nowPlayingBar" class="now-playing-bar" onclick="switchPage(2)">
-            <div class="np-meta">
-              <div id="homeNpTitle" class="np-title"></div>
-              <div id="homeNpSub" class="np-sub"></div>
+          <div id="mediaCard" class="w-media idle">
+            <div class="m-top">
+              <div class="art-wrap sub-shift">
+                <img id="mArt" class="art" alt="" />
+                <div class="art-ph">♪</div>
+              </div>
+              <div class="m-text">
+                <div class="m-app">
+                  <span id="mSourceIcon" class="m-source-icon" aria-hidden="true"></span>
+                  <span id="mAppName" class="m-app-name">MEDIA</span>
+                </div>
+                <div id="mTitle" class="m-title">Nessun brano in riproduzione</div>
+                <div id="mArtist" class="m-artist">Avvia musica o video sul PC</div>
+              </div>
             </div>
-            <span style="font-size:11px; color:rgb(var(--accent)); font-weight:700; white-space:nowrap;">🎚️ Mixer</span>
-          </div>
 
-          <div class="vol-strip">
-            <span style="font-size:12px; font-weight:600; min-width:58px;">🔊 <span id="homeVolLbl">--%</span></span>
-            <input id="homeVolSlider" class="range-slider" type="range" min="0" max="100" value="50" oninput="onMasterVolInput(this.value)" />
-            <div style="width:48px; height:6px; background:rgba(255,255,255,0.1); border-radius:99px; overflow:hidden;">
-              <div id="homeVuFill" style="height:100%; width:0%; background:var(--ok); transition:width 0.15s;"></div>
+            <div class="m-progress">
+              <div id="mSeekBar" class="bar">
+                <div id="mFill" class="fill"></div>
+              </div>
+              <div class="times">
+                <span id="mPos" class="m-pos">0:00</span>
+                <span id="mDur" class="m-dur">0:00</span>
+              </div>
+            </div>
+
+            <div class="m-controls">
+              <button class="ic" data-media="prev" aria-label="Precedente">
+                <svg viewBox="0 0 24 24"><path d="M6 5h2v14H6zM20 5v14L9.5 12z"/></svg>
+              </button>
+              <button class="ic play" data-media="playpause" aria-label="Play/Pausa">
+                <svg class="i-play" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                <svg class="i-pause" viewBox="0 0 24 24"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg>
+              </button>
+              <button class="ic" data-media="next" aria-label="Successiva">
+                <svg viewBox="0 0 24 24"><path d="M16 5h2v14h-2zM4 5v14l10.5-7z"/></svg>
+              </button>
+              <div class="vol">
+                <button id="mMuteBtn" class="ic sm mute" aria-label="Mute">
+                  <svg class="i-vol" viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9zm11.5 3a4.5 4.5 0 0 0-2.5-4v8a4.5 4.5 0 0 0 2.5-4z"/></svg>
+                  <svg class="i-mute" viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9zm12.6 3 2.2-2.2-1.4-1.4-2.2 2.2-2.2-2.2-1.4 1.4 2.2 2.2-2.2 2.2 1.4 1.4 2.2-2.2 2.2 2.2 1.4-1.4z"/></svg>
+                </button>
+                <input id="mVolRange" type="range" class="volr" min="0" max="100" step="1" value="50" />
+                <span id="mVolVal" class="vol-val">--</span>
+              </div>
             </div>
           </div>
         </div>
       </section>
 
       <!-- ================= PAGINA 1: HARDWARE & TASK MANAGER (CAT. A) ================= -->
-      <section class="page-view" id="page1">
+      <section class="page" id="page1">
         <div class="col-pane">
           <div class="hw-gauges">
             <div class="gauge-card">
@@ -987,7 +1167,7 @@
       </section>
 
       <!-- ================= PAGINA 2: MIXER AUDIO & SPETTRO (CAT. B) ================= -->
-      <section class="page-view" id="page2">
+      <section class="page" id="page2">
         <div class="col-pane">
           <div class="card-box">
             <div class="sec-head">
@@ -1033,7 +1213,7 @@
       </section>
 
       <!-- ================= PAGINA 3: FINESTRE, DOPPIO MONITOR & ALIMENTAZIONE (CAT. D) ================= -->
-      <section class="page-view" id="page3">
+      <section class="page" id="page3">
         <div class="col-pane">
           <div class="card-box">
             <div class="sec-head">
@@ -1063,8 +1243,8 @@
                 <b id="intBrightLbl">--%</b>
               </div>
               <input id="intBrightSlider" class="range-slider" type="range" min="0" max="100" value="80"
-                oninput="document.getElementById('intBrightLbl').textContent=this.value+'%'"
-                onchange="sendBridge({cmd:'setBrightness', monitor:'internal', value:Number(this.value)})" />
+                oninput="onBrightInput('internal', this)"
+                onchange="onBrightChange('internal', this)" />
             </div>
 
             <!-- Slider 2: Monitor Esterno collegato via Docking Station (DDC/CI) -->
@@ -1074,8 +1254,8 @@
                 <b id="extBrightLbl">--%</b>
               </div>
               <input id="extBrightSlider" class="range-slider" type="range" min="0" max="100" value="90"
-                oninput="document.getElementById('extBrightLbl').textContent=this.value+'%'"
-                onchange="sendBridge({cmd:'setBrightness', monitor:'external', value:Number(this.value)})" />
+                oninput="onBrightInput('external', this)"
+                onchange="onBrightChange('external', this)" />
             </div>
 
             <div style="display:flex; gap:6px; margin-top:4px;">
@@ -1119,7 +1299,7 @@
   <div id="btModal" class="modal-backdrop" onclick="if(event.target===this)closeModals()">
     <div class="modal-card">
       <div class="modal-head">
-        <span>Connessione Bluetooth HID (v1.2.0)</span>
+        <span>Connessione Bluetooth HID (v1.3.0)</span>
         <button class="close-btn" onclick="closeModals()">Chiudi</button>
       </div>
       <div id="btDiagBox" style="padding:10px 12px; border-radius:12px; background:rgba(255,255,255,0.04); border:1px solid var(--line); font-size:12px; line-height:1.45;">
@@ -1241,86 +1421,112 @@
       try { A && A.haptic(); } catch (_) {}
     }
 
-    // --- Navigazione Pagine (Swipe Orizzontale + Auto-Rotazione) ---
+    // --- Navigazione Pagine Nativa CSS Scroll Snap (copiata dal sorgente di PhoneBox) ---
+    const pager = document.getElementById('pager');
+    const PAGE_TITLES = [
+      'Home & Media',
+      'Hardware & Processi',
+      'Mixer Audio & Spettro',
+      'Finestre & Doppio Monitor'
+    ];
     let currentPage = 0;
     let lastPageSwitchAt = Date.now();
+    let snapTimer = 0;
+    let titleTimer = 0;
+    let draggingSlider = null;
 
-    function switchPage(idx, fromAuto = false) {
-      if (!fromAuto) haptic();
-      currentPage = ((idx % PAGE_COUNT) + PAGE_COUNT) % PAGE_COUNT;
-      lastPageSwitchAt = Date.now();
-      document.querySelectorAll('.page-view').forEach((el, i) => {
-        el.classList.toggle('active', i === currentPage);
-      });
+    function setSliderDrag(el, active) {
+      if (active) draggingSlider = el;
+      else if (draggingSlider === el) draggingSlider = null;
+    }
+
+    function flashTitle(text) {
+      const t = document.getElementById('ptitle');
+      if (!t) return;
+      t.textContent = text || PAGE_TITLES[currentPage] || '';
+      t.classList.add('on');
+      clearTimeout(titleTimer);
+      titleTimer = setTimeout(() => t.classList.remove('on'), 950);
+    }
+
+    function updateDots() {
       document.querySelectorAll('.p-dot').forEach((el, i) => {
         el.classList.toggle('active', i === currentPage);
       });
-      if (currentPage === 1) drawSparkline();
     }
 
-    // Gestione Swipe Orizzontale con blocco totale dei click accidentali sui pulsanti sottostanti
-    let touchStartX = 0;
-    let touchStartY = 0;
-    let touchIgnore = false;
-    let isSwipingGesture = false;
-    let suppressClickUntil = 0;
+    function onScroll() {
+      const w = pager.clientWidth || window.innerWidth;
+      if (!w) return;
+      const p = Math.max(0, Math.min(PAGE_COUNT - 1, Math.round(pager.scrollLeft / w)));
+      if (p === currentPage) return;
+      currentPage = p;
+      lastPageSwitchAt = Date.now();
+      updateDots();
+      flashTitle();
+      if (currentPage === 1) drawSparkline();
+    }
+    pager.addEventListener('scroll', onScroll, { passive: true });
 
-    const pagesWrapEl = document.getElementById('pagesWrap');
-
-    window.addEventListener('pointerdown', (e) => {
-      if (document.querySelector('.modal-backdrop.open')) {
-        touchIgnore = true;
+    function goPage(i, instant = false, fromAuto = false) {
+      i = ((i % PAGE_COUNT) + PAGE_COUNT) % PAGE_COUNT;
+      if (!fromAuto) haptic();
+      lastPageSwitchAt = Date.now();
+      const w = pager.clientWidth || window.innerWidth;
+      if (!instant && Math.abs(i - currentPage) <= 1) {
+        pager.scrollTo({ left: i * w, behavior: 'smooth' });
         return;
       }
-      const tag = (e.target && e.target.tagName) ? e.target.tagName.toUpperCase() : '';
-      if (tag === 'INPUT' || (e.target && e.target.closest && e.target.closest('.range-slider'))) {
-        touchIgnore = true;
-        isSwipingGesture = false;
+      // Come in PhoneBox: sospende scroll-snap-stop per 120ms durante i salti multi-pagina o wrap-around
+      pager.style.scrollSnapType = 'none';
+      pager.scrollLeft = i * w;
+      onScroll();
+      clearTimeout(snapTimer);
+      snapTimer = setTimeout(() => { pager.style.scrollSnapType = ''; }, 120);
+    }
+
+    // Wrap-around circolare ai bordi (copiato da main.js righe 1565-1604 di PhoneBox):
+    // lo swipe normale tra pagine contigue è gestito nativamente da Chromium CSS Scroll Snap (zero click accidentali!).
+    let swipeStartX = 0;
+    let swipeStartY = 0;
+    let swipeStartPage = 0;
+    let swipeStartTime = 0;
+    let swipeTracking = false;
+
+    pager.addEventListener('touchstart', (e) => {
+      swipeTracking = false;
+      if (e.touches.length !== 1 || document.querySelector('.modal-backdrop.open')) return;
+      if (draggingSlider || (e.target && e.target.closest && e.target.closest('button, input, .range-slider, .volr, .bar, .scroll-list'))) return;
+      swipeStartX = e.touches[0].clientX;
+      swipeStartY = e.touches[0].clientY;
+      swipeStartPage = currentPage;
+      swipeStartTime = Date.now();
+      swipeTracking = true;
+    }, { passive: true });
+
+    pager.addEventListener('touchend', (e) => {
+      if (!swipeTracking || !e.changedTouches || e.changedTouches.length !== 1) {
+        swipeTracking = false;
         return;
       }
-      touchIgnore = false;
-      isSwipingGesture = false;
-      touchStartX = e.clientX;
-      touchStartY = e.clientY;
-    }, { capture: true, passive: true });
-
-    window.addEventListener('pointermove', (e) => {
-      if (touchIgnore) return;
-      const dx = e.clientX - touchStartX;
-      const dy = e.clientY - touchStartY;
-      if (Math.abs(dx) > 12 || Math.abs(dy) > 12) {
-        stopRepeatMedia();
-      }
-      if (Math.abs(dx) > 20 && Math.abs(dx) > Math.abs(dy) * 1.25) {
-        isSwipingGesture = true;
-        suppressClickUntil = Date.now() + 450;
-      }
-    }, { capture: true, passive: true });
-
-    window.addEventListener('pointerup', (e) => {
-      if (touchIgnore) return;
-      const dx = e.clientX - touchStartX;
-      const dy = e.clientY - touchStartY;
-      if (Math.abs(dx) > 55 && Math.abs(dx) > Math.abs(dy) * 1.3) {
-        isSwipingGesture = true;
-        suppressClickUntil = Date.now() + 450;
-        if (dx < 0) {
-          switchPage(currentPage + 1); // Swipe verso sinistra -> pagina successiva
-        } else {
-          switchPage(currentPage - 1); // Swipe verso destra -> pagina precedente
+      swipeTracking = false;
+      const dx = e.changedTouches[0].clientX - swipeStartX;
+      const dy = e.changedTouches[0].clientY - swipeStartY;
+      const dt = Date.now() - swipeStartTime;
+      if (dt < 700 && Math.abs(dx) >= 45 && Math.abs(dx) > Math.abs(dy) * 1.3) {
+        if (dx < 0 && swipeStartPage === PAGE_COUNT - 1 && currentPage === PAGE_COUNT - 1) {
+          goPage(0, true);
+        } else if (dx > 0 && swipeStartPage === 0 && currentPage === 0) {
+          goPage(PAGE_COUNT - 1, true);
         }
       }
-    }, { capture: true, passive: true });
+    }, { passive: true });
 
-    // Intercetta in fase di capture qualsiasi click generato alla fine di uno swipe
-    window.addEventListener('click', (e) => {
-      if (isSwipingGesture || Date.now() < suppressClickUntil) {
-        e.stopPropagation();
-        e.stopImmediatePropagation();
-        e.preventDefault();
-        isSwipingGesture = false;
-      }
-    }, true);
+    pager.addEventListener('touchcancel', () => { swipeTracking = false; }, { passive: true });
+    window.addEventListener('resize', () => {
+      const w = pager.clientWidth || window.innerWidth;
+      pager.scrollLeft = currentPage * w;
+    });
 
     // Pulsante Rotazione Schermate (cicla tra Mai -> 30s -> 1m -> 5m)
     const ROT_STEPS = [
@@ -1346,7 +1552,7 @@
       cfg.rotateSec = next[0];
       lastPageSwitchAt = Date.now();
       saveCfg();
-      showFeedback(`🔄 Rotazione: ${next[1]}`);
+      flashTitle(`🔄 Rotazione: ${next[1]}`);
     }
 
     // --- Orologio, Data & Controllo Rotazione / Idle ---
@@ -1365,8 +1571,9 @@
       // Rotazione automatica pagine se impostata (30s, 1m, 5m) e nessun modale aperto
       const rotMs = Number(cfg.rotateSec || 0) * 1000;
       const anyModalOpen = !!document.querySelector('.modal-backdrop.open');
-      if (rotMs > 0 && !isSaver && !anyModalOpen && (Date.now() - lastPageSwitchAt >= rotMs)) {
-        switchPage(currentPage + 1, true);
+      if (rotMs > 0 && !isSaver && !anyModalOpen && !draggingSlider && (Date.now() - lastPageSwitchAt >= rotMs)) {
+        const nextIdx = (currentPage + 1) % PAGE_COUNT;
+        goPage(nextIdx, nextIdx === 0, true);
       }
 
       checkIdleState();
@@ -1522,48 +1729,257 @@
       if (A && A.btStatus) renderBtStatus(A.btStatus());
     }
 
-    let fbTimer = null;
-    function showFeedback(text) {
-      const el = document.getElementById('hidFeedback');
-      if (!el) return;
-      el.textContent = text;
-      clearTimeout(fbTimer);
-      fbTimer = setTimeout(() => { el.textContent = 'Scorri ⇆ per le altre schede'; }, 1600);
+    // --- Motore Media Card W.media (copiato da main.js & widgets/basic.js di PhoneBox) ---
+    const DEFAULT_AMBIENT = '45, 212, 191';
+    const mediaCard = document.getElementById('mediaCard');
+    const mArt = document.getElementById('mArt');
+    const mSourceIcon = document.getElementById('mSourceIcon');
+    const mAppName = document.getElementById('mAppName');
+    const mTitle = document.getElementById('mTitle');
+    const mArtist = document.getElementById('mArtist');
+    const mSeekBar = document.getElementById('mSeekBar');
+    const mFill = document.getElementById('mFill');
+    const mPos = document.getElementById('mPos');
+    const mDur = document.getElementById('mDur');
+    const mMuteBtn = document.getElementById('mMuteBtn');
+    const mVolRange = document.getElementById('mVolRange');
+    const mVolVal = document.getElementById('mVolVal');
+
+    const SOURCE_ICONS = {
+      Spotify: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="11" fill="#1ed760"/><path d="M17.2 16.1a.75.75 0 0 1-1.03.25c-2.82-1.73-6.38-2.12-10.57-1.16a.75.75 0 1 1-.33-1.46c4.58-1.05 8.52-.6 11.68 1.34.36.22.47.68.25 1.03zm1.4-3.15a.94.94 0 0 1-1.29.31c-3.23-1.99-8.16-2.56-11.98-1.4a.94.94 0 1 1-.55-1.8c4.37-1.32 9.8-.68 13.51 1.6.44.27.58.85.31 1.29zm.12-3.28c-3.87-2.3-10.26-2.51-13.96-1.39a1.12 1.12 0 1 1-.65-2.15c4.25-1.29 11.31-1.04 15.76 1.6a1.12 1.12 0 0 1-1.15 1.94z" fill="#000"/></svg>',
+      YouTube: '<svg viewBox="0 0 24 24"><rect x="1" y="4" width="22" height="16" rx="5" fill="#ff0033"/><path d="m10 8 6 4-6 4z" fill="#fff"/></svg>',
+      'YouTube Music': '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="11" fill="#ff0033"/><circle cx="12" cy="12" r="6.5" fill="none" stroke="#fff" stroke-width="1.4"/><path d="m10 8.5 5.5 3.5-5.5 3.5z" fill="#fff"/></svg>',
+      Chrome: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#4285F4"/><circle cx="12" cy="12" r="4" fill="#fff"/></svg>',
+      Edge: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#0ea5e9"/><circle cx="12" cy="12" r="4" fill="#fff"/></svg>',
+      Firefox: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#f97316"/><circle cx="12" cy="12" r="4" fill="#fde047"/></svg>',
+      VLC: '<svg viewBox="0 0 24 24"><path d="M9 3h6l4 16H5L9 3zm-5 16h16v2H4v-2z" fill="#f97316"/></svg>'
+    };
+
+    let mediaState = null;
+    let currentArtId = -1;
+    let cachedArtUri = '';
+
+    function fmtTime(ms) {
+      if (!ms || ms < 0) return '0:00';
+      const totalSec = Math.floor(ms / 1000);
+      const min = Math.floor(totalSec / 60);
+      const sec = totalSec % 60;
+      return `${min}:${pad(sec)}`;
     }
 
-    function triggerMedia(usageCode, label, btnEl) {
-      haptic();
-      if (btnEl) {
-        btnEl.classList.add('active');
-        setTimeout(() => btnEl.classList.remove('active'), 140);
+    function setAmbient(rgb) {
+      document.documentElement.style.setProperty('--ambient', rgb || DEFAULT_AMBIENT);
+    }
+
+    function averageColor(img) {
+      try {
+        const c = document.createElement('canvas');
+        c.width = c.height = 16;
+        const g = c.getContext('2d');
+        g.drawImage(img, 0, 0, 16, 16);
+        const d = g.getImageData(0, 0, 16, 16).data;
+        let r = 0, gg = 0, b = 0, n = 0;
+        for (let i = 0; i < d.length; i += 4) {
+          const mx = Math.max(d[i], d[i + 1], d[i + 2]);
+          const mn = Math.min(d[i], d[i + 1], d[i + 2]);
+          if (mx < 30 || mx - mn < 20) continue;
+          r += d[i]; gg += d[i + 1]; b += d[i + 2]; n++;
+        }
+        if (!n) return null;
+        const R = r / n, G = gg / n, B = b / n;
+        const k = 220 / (Math.max(R, G, B) || 1);
+        return [R, G, B].map((v) => Math.round(Math.min(255, v * k))).join(', ');
+      } catch (_) {
+        return null;
       }
-      if (A && A.sendMedia) {
-        const ok = A.sendMedia(usageCode);
-        showFeedback(ok ? `✓ ${label}` : 'HID non connesso');
-        if (!ok && btState.state !== 'connected') openBtModal();
+    }
+
+    mArt.addEventListener('load', () => {
+      mArt.classList.add('on');
+      setAmbient(averageColor(mArt));
+    });
+    mArt.addEventListener('error', () => {
+      mArt.classList.remove('on');
+      setAmbient(null);
+    });
+
+    function resetMediaCardToIdle() {
+      mediaState = null;
+      mediaCard.classList.add('idle');
+      mediaCard.classList.remove('playing');
+      mAppName.textContent = 'MEDIA';
+      mSourceIcon.innerHTML = '';
+      mTitle.textContent = 'Nessun brano in riproduzione';
+      mArtist.textContent = 'Avvia musica o video sul PC';
+      mFill.style.width = '0%';
+      mPos.textContent = '0:00';
+      mDur.textContent = '0:00';
+      if (currentArtId !== -1 || cachedArtUri) {
+        currentArtId = -1;
+        cachedArtUri = '';
+        mArt.classList.remove('on');
+        mArt.removeAttribute('src');
+        setAmbient(null);
+      }
+    }
+
+    function updateMediaCard(m) {
+      if (!m || !m.title) {
+        resetMediaCardToIdle();
+        return;
+      }
+      mediaState = {
+        app: m.app || 'Media',
+        title: m.title,
+        artist: m.artist || '',
+        album: m.album || '',
+        playing: !!m.playing,
+        posMs: Number(m.posMs || 0),
+        durMs: Number(m.durMs || 0),
+        canSeek: !!m.canSeek,
+        artId: Number(m.artId || 0),
+        at: performance.now()
+      };
+
+      mediaCard.classList.remove('idle');
+      mediaCard.classList.toggle('playing', mediaState.playing);
+
+      // Sorgente + indicatore stato Pausa (come nei dispositivi commerciali)
+      mAppName.textContent = mediaState.playing
+        ? mediaState.app
+        : `${mediaState.app} · IN PAUSA`;
+      mSourceIcon.innerHTML = SOURCE_ICONS[mediaState.app] || '';
+      mTitle.textContent = mediaState.title;
+      mArtist.textContent = [mediaState.artist, mediaState.album].filter(Boolean).join(' · ') || '—';
+
+      if (mediaState.durMs > 0) {
+        const pct = Math.min(100, Math.max(0, (mediaState.posMs / mediaState.durMs) * 100));
+        mFill.style.width = pct + '%';
+        mPos.textContent = fmtTime(mediaState.posMs);
+        mDur.textContent = fmtTime(mediaState.durMs);
       } else {
-        showFeedback(`Demo: ${label}`);
+        mFill.style.width = mediaState.playing ? '100%' : '0%';
+        mPos.textContent = fmtTime(mediaState.posMs);
+        mDur.textContent = mediaState.playing ? 'LIVE' : '0:00';
+      }
+
+      // Gestione Thumbnail con cache locale per evitare traffico Bluetooth ridondante
+      if (typeof m.artData === 'string') {
+        currentArtId = mediaState.artId;
+        cachedArtUri = m.artData;
+        if (cachedArtUri.startsWith('data:image')) {
+          if (mArt.getAttribute('src') !== cachedArtUri) {
+            mArt.src = cachedArtUri;
+          } else {
+            mArt.classList.add('on');
+          }
+        } else {
+          mArt.classList.remove('on');
+          mArt.removeAttribute('src');
+          setAmbient(null);
+        }
+      } else if (mediaState.artId > 0 && currentArtId !== mediaState.artId && !cachedArtUri) {
+        // Se la pagina è stata ricaricata a connessione aperta, richiede la copertina corrente al Bridge
+        currentArtId = mediaState.artId;
+        if (A && A.sendBridgeCmd) A.sendBridgeCmd(JSON.stringify({ cmd: 'refreshArt' }));
       }
     }
 
-    let repeatTimer = null;
-    let repeatInterval = null;
-    function startRepeatMedia(usageCode, label, btnEl) {
-      // Non inviare subito al pointerdown (così se l'utente inizia uno swipe sul pulsante non parte il comando!)
-      // Il tocco singolo viene gestito da onclick; qui parte solo la ripetizione se tiene premuto fermo per > 420ms.
-      stopRepeatMedia();
-      repeatTimer = setTimeout(() => {
-        if (isSwipingGesture) return;
-        repeatInterval = setInterval(() => {
-          if (isSwipingGesture) { stopRepeatMedia(); return; }
-          triggerMedia(usageCode, label, btnEl);
-        }, 140);
-      }, 420);
+    // Interpolazione fluida della barra di avanzamento ogni 250ms (come 'fast' tick in PhoneBox)
+    setInterval(() => {
+      if (!mediaState || !mediaState.playing) return;
+      if (mediaState.durMs > 0) {
+        const pos = Math.min(mediaState.durMs, mediaState.posMs + (performance.now() - mediaState.at));
+        mFill.style.width = ((pos / mediaState.durMs) * 100) + '%';
+        mPos.textContent = fmtTime(pos);
+      }
+    }, 250);
+
+    // Pulsanti Precedente / Play-Pausa / Successiva (Ibridi SMTC + fallback Bluetooth HID)
+    const HID_USAGE = { prev: 0x00B6, playpause: 0x00CD, next: 0x00B5 };
+    mediaCard.querySelectorAll('[data-media]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        haptic();
+        const action = btn.dataset.media;
+        if (action === 'playpause' && mediaState) {
+          mediaState.playing = !mediaState.playing;
+          if (!mediaState.playing && mediaState.durMs > 0) {
+            mediaState.posMs = Math.min(mediaState.durMs, mediaState.posMs + (performance.now() - mediaState.at));
+          }
+          mediaState.at = performance.now();
+          mediaCard.classList.toggle('playing', mediaState.playing);
+          mAppName.textContent = mediaState.playing ? mediaState.app : `${mediaState.app} · IN PAUSA`;
+        }
+        if (bridgeActive && mediaState) {
+          sendBridgeSilent({ cmd: 'mediaControl', action });
+        } else if (A && A.sendMedia) {
+          const ok = A.sendMedia(HID_USAGE[action] || 0x00CD);
+          if (!ok && !bridgeActive && btState.state !== 'connected') openBtModal();
+        }
+      });
+    });
+
+    // Seek interattivo toccando la barra di avanzamento
+    mSeekBar.addEventListener('click', (e) => {
+      if (!bridgeActive || !mediaState || !mediaState.durMs || !mediaState.canSeek) return;
+      const r = mSeekBar.getBoundingClientRect();
+      const ratio = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
+      const ms = Math.round(ratio * mediaState.durMs);
+      haptic();
+      mediaState.posMs = ms;
+      mediaState.at = performance.now();
+      mFill.style.width = (ratio * 100) + '%';
+      mPos.textContent = fmtTime(ms);
+      sendBridgeSilent({ cmd: 'mediaControl', action: 'seek', ms });
+    });
+
+    // Volume inline nella card W.media (con riempimento --p e guardia anti-rimbalzo durante il drag)
+    let volTimer = 0;
+    let volRelease = 0;
+
+    function paintMasterVol(v, muted) {
+      const val = Math.min(100, Math.max(0, Math.round(Number(v) || 0)));
+      mVolRange.value = val;
+      mVolRange.style.setProperty('--p', val + '%');
+      mVolVal.textContent = val;
+      mediaCard.classList.toggle('muted-on', !!muted);
+      const mixSl = document.getElementById('mixMasterSlider');
+      const mixLb = document.getElementById('mixMasterLbl');
+      if (mixSl && draggingSlider !== mixSl) mixSl.value = val;
+      if (mixLb) mixLb.textContent = (muted ? 'MUTE ' : '') + val + '%';
     }
-    function stopRepeatMedia() {
-      clearTimeout(repeatTimer);
-      clearInterval(repeatInterval);
-    }
+
+    mVolRange.addEventListener('input', () => {
+      clearTimeout(volRelease);
+      setSliderDrag(mVolRange, true);
+      const v = Number(mVolRange.value);
+      mVolRange.style.setProperty('--p', v + '%');
+      mVolVal.textContent = v;
+      document.getElementById('mixMasterLbl').textContent = v + '%';
+      document.getElementById('mixMasterSlider').value = v;
+      clearTimeout(volTimer);
+      volTimer = setTimeout(() => sendBridgeSilent({ cmd: 'setMasterVolume', value: v }), 80);
+    });
+    mVolRange.addEventListener('change', () => {
+      clearTimeout(volRelease);
+      volRelease = setTimeout(() => setSliderDrag(mVolRange, false), 650);
+    });
+    mVolRange.addEventListener('pointercancel', () => {
+      clearTimeout(volTimer);
+      clearTimeout(volRelease);
+      setSliderDrag(mVolRange, false);
+    });
+
+    mMuteBtn.addEventListener('click', () => {
+      haptic();
+      if (bridgeActive) {
+        const nextMuted = !mediaCard.classList.contains('muted-on');
+        mediaCard.classList.toggle('muted-on', nextMuted);
+        sendBridgeSilent({ cmd: 'toggleMasterMute' });
+      } else if (A && A.sendMedia) {
+        A.sendMedia(0x00E2);
+      }
+    });
 
     // --- Bridge PowerShell (Bluetooth RFCOMM) ---
     let bridgeActive = false;
@@ -1581,8 +1997,7 @@
       dot.className = 'dot ' + (bridgeActive ? 'on' : '');
       lbl.textContent = bridgeActive ? `⚡ Bridge: ${bridgeHost}` : 'Bridge PS1: Attesa';
       if (!bridgeActive) {
-        // Se il bridge si disconnette, nascondi il banner Now Playing
-        document.getElementById('nowPlayingBar').classList.remove('visible');
+        resetMediaCardToIdle();
       }
       const st = document.getElementById('bridgeModalStatus');
       if (st) {
@@ -1592,29 +2007,57 @@
       }
     };
 
-    function sendBridge(obj) {
-      haptic();
+    function sendBridgeSilent(obj) {
       if (A && A.sendBridgeCmd) {
         return A.sendBridgeCmd(JSON.stringify(obj));
       }
       return false;
     }
 
+    function sendBridge(obj) {
+      haptic();
+      return sendBridgeSilent(obj);
+    }
+
     let volDebounce = null;
+    let mixRelease = 0;
     function onMasterVolInput(val) {
+      const mixSl = document.getElementById('mixMasterSlider');
+      clearTimeout(mixRelease);
+      setSliderDrag(mixSl, true);
       const v = Number(val);
-      document.getElementById('homeVolLbl').textContent = v + '%';
+      mVolRange.value = v;
+      mVolRange.style.setProperty('--p', v + '%');
+      mVolVal.textContent = v;
       document.getElementById('mixMasterLbl').textContent = v + '%';
-      document.getElementById('homeVolSlider').value = v;
-      document.getElementById('mixMasterSlider').value = v;
       clearTimeout(volDebounce);
       volDebounce = setTimeout(() => {
-        sendBridge({ cmd: 'setMasterVolume', value: v });
-      }, 60);
+        sendBridgeSilent({ cmd: 'setMasterVolume', value: v });
+      }, 80);
+      mixRelease = setTimeout(() => setSliderDrag(mixSl, false), 650);
     }
 
     function toggleMasterMute() {
       sendBridge({ cmd: 'toggleMasterMute' });
+    }
+
+    // Slider Luminosità Doppio Monitor con protezione anti-rimbalzo durante il drag
+    let brightReleaseInt = 0;
+    let brightReleaseExt = 0;
+    function onBrightInput(monitor, sliderEl) {
+      setSliderDrag(sliderEl, true);
+      const lblId = monitor === 'external' ? 'extBrightLbl' : 'intBrightLbl';
+      document.getElementById(lblId).textContent = sliderEl.value + '%';
+    }
+    function onBrightChange(monitor, sliderEl) {
+      sendBridge({ cmd: 'setBrightness', monitor, value: Number(sliderEl.value) });
+      if (monitor === 'external') {
+        clearTimeout(brightReleaseExt);
+        brightReleaseExt = setTimeout(() => setSliderDrag(sliderEl, false), 900);
+      } else {
+        clearTimeout(brightReleaseInt);
+        brightReleaseInt = setTimeout(() => setSliderDrag(sliderEl, false), 900);
+      }
     }
 
     function setProcSort(mode) {
@@ -1686,30 +2129,22 @@
         renderProcList(d.procs);
       }
 
-      // Banner Now Playing Live: visibile SOLO se c'è un programma multimediale attivo, altrimenti sparisce!
-      const npBar = document.getElementById('nowPlayingBar');
-      const hasMedia = typeof d.mediaTitle === 'string' && d.mediaTitle.trim().length > 0;
-      if (hasMedia) {
-        npBar.classList.add('visible');
-        document.getElementById('homeNpTitle').textContent = `🎵 ${d.mediaTitle.trim()}`;
-        document.getElementById('homeNpSub').textContent = d.mediaApp ? `Sorgente: ${d.mediaApp}` : 'In riproduzione sul PC';
+      // Card Media SMTC (Playing, Paused o Idle quando la sorgente viene chiusa)
+      if ('media' in d) {
+        updateMediaCard(d.media);
+      } else if (d.mediaTitle) {
+        updateMediaCard({ app: d.mediaApp || 'Media', title: d.mediaTitle, artist: '', album: '', playing: true, posMs: 0, durMs: 0, canSeek: false, artId: 0 });
       } else {
-        npBar.classList.remove('visible');
-        document.getElementById('homeNpTitle').textContent = '';
-        document.getElementById('homeNpSub').textContent = '';
+        resetMediaCardToIdle();
       }
 
-      if (d.vol !== undefined) {
-        const v = Math.round(d.vol);
-        document.getElementById('homeVolLbl').textContent = (d.muted ? 'MUTE ' : '') + v + '%';
-        document.getElementById('mixMasterLbl').textContent = (d.muted ? 'MUTE ' : '') + v + '%';
-        document.getElementById('homeVolSlider').value = v;
-        document.getElementById('mixMasterSlider').value = v;
+      // Volume Master (aggiorna solo se l'utente non sta trascinando lo slider volume)
+      if (d.vol !== undefined && draggingSlider !== mVolRange && draggingSlider !== document.getElementById('mixMasterSlider')) {
+        paintMasterVol(d.vol, d.muted);
       }
 
-      // Peak & Spectrum
+      // Peak & Spectrum (Pagina 2)
       const peak = Math.round(d.peak || 0);
-      document.getElementById('homeVuFill').style.width = peak + '%';
       document.getElementById('mixPeakLbl').textContent = `Picco: ${peak}%`;
       const bars = specContainer.children;
       for (let i = 0; i < bars.length; i++) {
@@ -1742,18 +2177,20 @@
         }
       }
 
-      // Luminosità Doppio Monitor (Portatile Interno + Monitor Esterno Docking)
+      // Luminosità Doppio Monitor (aggiorna solo se l'utente non sta trascinando il relativo slider)
+      const intSl = document.getElementById('intBrightSlider');
+      const extSl = document.getElementById('extBrightSlider');
       const intB = (d.brightnessInt !== undefined) ? d.brightnessInt : d.brightness;
-      if (intB !== undefined && intB >= 0) {
+      if (intB !== undefined && intB >= 0 && draggingSlider !== intSl) {
         document.getElementById('intBrightLbl').textContent = intB + '%';
-        document.getElementById('intBrightSlider').value = intB;
+        intSl.value = intB;
       }
       if (d.extMonitorName) {
         document.getElementById('extMonTitle').textContent = `🖥️ ${d.extMonitorName}`;
       }
-      if (d.brightnessExt !== undefined && d.brightnessExt >= 0) {
+      if (d.brightnessExt !== undefined && d.brightnessExt >= 0 && draggingSlider !== extSl) {
         document.getElementById('extBrightLbl').textContent = d.brightnessExt + '%';
-        document.getElementById('extBrightSlider').value = d.brightnessExt;
+        extSl.value = d.brightnessExt;
       }
 
       // Finestre Attive
