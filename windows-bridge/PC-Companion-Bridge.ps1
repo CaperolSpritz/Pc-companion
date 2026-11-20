@@ -640,14 +640,41 @@ function Handle-PhoneCommand([string]$jsonLine) {
                 [PcCompanionNative]::SetAppAudio([int]$cmdObj.pid, $null, [bool]$cmdObj.mute)
             }
             'mediaControl' {
+                $act = [string]$cmdObj.action
                 if ($null -ne $script:smtcManager) {
                     $s = $script:smtcManager.GetCurrentSession()
                     if ($null -ne $s) {
-                        switch ($cmdObj.action) {
-                            'playpause' { $null = Invoke-WinRtAwait ($s.TryTogglePlayPauseAsync()) ([bool]) }
-                            'next'      { $null = Invoke-WinRtAwait ($s.TrySkipNextAsync()) ([bool]) }
-                            'prev'      { $null = Invoke-WinRtAwait ($s.TrySkipPreviousAsync()) ([bool]) }
-                            'seek'      {
+                        $pb = $s.GetPlaybackInfo()
+                        $ctrls = if ($null -ne $pb) { $pb.Controls } else { $null }
+                        $tl = $s.GetTimelineProperties()
+                        Write-Host ("     [MEDIA-CTRL] Azione='{0}' | NextEnabled={1} | PrevEnabled={2} | SeekEnabled={3}" -f $act, $ctrls.IsNextEnabled, $ctrls.IsPreviousEnabled, $ctrls.IsPlaybackPositionEnabled) -ForegroundColor Magenta
+                        switch ($act) {
+                            'playpause' {
+                                $null = Invoke-WinRtAwait ($s.TryTogglePlayPauseAsync()) ([bool])
+                            }
+                            'next' {
+                                if ($null -ne $ctrls -and $ctrls.IsNextEnabled) {
+                                    $null = Invoke-WinRtAwait ($s.TrySkipNextAsync()) ([bool])
+                                } elseif ($null -ne $ctrls -and $ctrls.IsPlaybackPositionEnabled -and $null -ne $tl -and $tl.EndTime.TotalMilliseconds -gt 1500) {
+                                    # Web player come Freefy su Chrome dichiarano IsNextEnabled=False ma passano al brano successivo a fine traccia (onended)
+                                    $endTicks = ($tl.EndTime - [TimeSpan]::FromMilliseconds(600)).Ticks
+                                    Write-Host "     [MEDIA-CTRL] IsNextEnabled=False -> Salto a fine brano per attivare la traccia successiva della coda web!" -ForegroundColor Yellow
+                                    $null = Invoke-WinRtAwait ($s.TryChangePlaybackPositionAsync($endTicks)) ([bool])
+                                } else {
+                                    $null = Invoke-WinRtAwait ($s.TrySkipNextAsync()) ([bool])
+                                }
+                            }
+                            'prev' {
+                                if ($null -ne $ctrls -and $ctrls.IsPreviousEnabled -and ($null -eq $tl -or $tl.Position.TotalSeconds -le 4)) {
+                                    $null = Invoke-WinRtAwait ($s.TrySkipPreviousAsync()) ([bool])
+                                } elseif ($null -ne $ctrls -and $ctrls.IsPlaybackPositionEnabled) {
+                                    Write-Host "     [MEDIA-CTRL] Riavvolgo il brano a 0:00 (Seek=0)" -ForegroundColor Yellow
+                                    $null = Invoke-WinRtAwait ($s.TryChangePlaybackPositionAsync(0L)) ([bool])
+                                } else {
+                                    $null = Invoke-WinRtAwait ($s.TrySkipPreviousAsync()) ([bool])
+                                }
+                            }
+                            'seek' {
                                 $ticks = [TimeSpan]::FromMilliseconds([double]$cmdObj.ms).Ticks
                                 $null = Invoke-WinRtAwait ($s.TryChangePlaybackPositionAsync($ticks)) ([bool])
                             }
