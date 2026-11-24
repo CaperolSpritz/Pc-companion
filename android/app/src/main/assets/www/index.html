@@ -892,6 +892,96 @@
       color: #ffffff;
     }
 
+    /* --- PAGE 4: OPTA BURN-IN MASTER MONITOR --- */
+    @keyframes optaPulse {
+      0%, 100% { box-shadow: 0 0 12px rgba(239, 68, 68, 0.35), inset 0 0 14px rgba(239, 68, 68, 0.18); }
+      50%      { box-shadow: 0 0 22px rgba(239, 68, 68, 0.75), inset 0 0 22px rgba(239, 68, 68, 0.36); }
+    }
+    body.opta-alarm-flash::after {
+      content: "";
+      position: fixed;
+      inset: 0;
+      z-index: 40;
+      pointer-events: none;
+      border: 3px solid #ef4444;
+      box-shadow: inset 0 0 32px rgba(239, 68, 68, 0.55);
+      animation: optaPulse 1s ease-in-out infinite;
+    }
+    .opta-kpi-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+      flex-wrap: wrap;
+      margin-bottom: 6px;
+      flex-shrink: 0;
+    }
+    .opta-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 8px;
+      border-radius: 999px;
+      font-size: 10.5px;
+      font-weight: 700;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid var(--line);
+    }
+    .opta-badge.ok {
+      background: rgba(34, 197, 94, 0.16);
+      border-color: rgba(34, 197, 94, 0.45);
+      color: #86efac;
+    }
+    .opta-badge.err {
+      background: rgba(239, 68, 68, 0.25);
+      border-color: #ef4444;
+      color: #fecaca;
+      animation: optaPulse 1.2s infinite;
+    }
+    .opta-slave-card {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      padding: 8px 10px;
+      border-radius: 12px;
+      background: rgba(34, 197, 94, 0.06);
+      border: 1px solid rgba(34, 197, 94, 0.28);
+      transition: background 0.2s ease, border-color 0.2s ease;
+    }
+    .opta-slave-card.paused {
+      background: rgba(245, 158, 11, 0.08);
+      border-color: rgba(245, 158, 11, 0.4);
+    }
+    .opta-slave-card.err {
+      background: rgba(239, 68, 68, 0.24);
+      border: 1.5px solid #ef4444;
+      animation: optaPulse 1.3s ease-in-out infinite;
+    }
+    .opta-row-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+      font-size: 12.5px;
+    }
+    .opta-row-sub {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+      font-size: 11px;
+      color: #d1d5db;
+    }
+    .opta-type-pill {
+      padding: 1px 6px;
+      border-radius: 5px;
+      font-size: 9.5px;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      background: rgba(56, 189, 248, 0.18);
+      color: #7dd3fc;
+    }
+
     /* --- Modals --- */
     .modal-backdrop {
       position: fixed;
@@ -1047,6 +1137,7 @@
           <span class="p-dot" data-page="1"></span>
           <span class="p-dot" data-page="2"></span>
           <span class="p-dot" data-page="3"></span>
+          <span class="p-dot" data-page="4"></span>
         </div>
       </div>
     </header>
@@ -1323,6 +1414,57 @@
         </div>
       </section>
 
+      <!-- ================= PAGINA 4: OPTA MASTER HUB - MONITORAGGIO SLAVE IN TEST ================= -->
+      <section class="page" id="page4">
+        <!-- Colonna Sinistra: Ora, Data e Meteo (Avigliana - Drubiaglio) -->
+        <div class="col-pane">
+          <div class="clock-wrap sub-shift">
+            <div class="clock-main">
+              <span id="optaHh">--</span><span class="colon">:</span><span id="optaMm">--</span>
+              <span id="optaSs" class="sec">00</span>
+            </div>
+            <div id="optaDateStr" class="date-line">caricamento...</div>
+          </div>
+
+          <div class="wx-card" onclick="openWxModal()">
+            <div class="wx-left">
+              <span id="optaWxIcon" class="wx-icon">⛅</span>
+              <div>
+                <div style="display:flex; align-items:baseline; gap:7px;">
+                  <span id="optaWxTemp" class="wx-temp">--°</span>
+                  <span id="optaWxDesc" class="wx-desc">Avigliana (Drubiaglio)</span>
+                </div>
+                <div id="optaWxMeta" class="wx-meta">Tocca per impostare la città</div>
+              </div>
+            </div>
+            <div id="optaWxHourly" class="wx-hourly"></div>
+          </div>
+        </div>
+
+        <!-- Colonna Destra: Situazione Slave OPTA in Test (Evidenziazione Rossa su Errore) -->
+        <div class="col-pane">
+          <div class="card-box" style="flex:1; display:flex; flex-direction:column; min-height:0;">
+            <div class="opta-kpi-bar">
+              <div style="display:flex; align-items:center; gap:5px;">
+                <span id="optaMasterDot" class="dot"></span>
+                <span id="optaMasterLbl" style="font-size:11px; font-weight:700; letter-spacing:0.06em; text-transform:uppercase;">OPTA MASTER</span>
+              </div>
+              <div style="display:flex; align-items:center; gap:5px;">
+                <span id="optaRunBadge" class="opta-badge">🔥 0 in test</span>
+                <span id="optaErrBadge" class="opta-badge ok">✅ 0 errori</span>
+                <button class="mini-btn accent" onclick="sendBridge({cmd:'runOptaDownload'})" title="Avvia sul PC lo scarico automatico dei log CSV OPTA">📥 Log</button>
+              </div>
+            </div>
+
+            <div id="optaSlavesBox" class="scroll-list">
+              <div style="font-size:12px; color:var(--muted); padding:10px; text-align:center;">
+                In attesa di collegamento all'<b>OPTA Master Hub (192.168.1.10)</b> tramite il PC...
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
     </div>
   </div>
 
@@ -1330,7 +1472,7 @@
   <div id="btModal" class="modal-backdrop" onclick="if(event.target===this)closeModals()">
     <div class="modal-card">
       <div class="modal-head">
-        <span>Connessione Bluetooth HID (v1.4.0)</span>
+        <span>Connessione Bluetooth HID (v1.5.0)</span>
         <button class="close-btn" onclick="closeModals()">Chiudi</button>
       </div>
       <div id="btDiagBox" style="padding:10px 12px; border-radius:12px; background:rgba(255,255,255,0.04); border:1px solid var(--line); font-size:12px; line-height:1.45;">
@@ -1416,7 +1558,7 @@
   <script>
     const A = window.Android || null;
     const pad = (n) => String(n).padStart(2, '0');
-    const PAGE_COUNT = 4;
+    const PAGE_COUNT = 5;
 
     // Inizializza barre dello spettro audio
     const specContainer = document.getElementById('spectrumBars');
@@ -1427,17 +1569,24 @@
       specContainer.appendChild(b);
     }
 
-    // --- Configurazione persistente ---
+    // --- Configurazione persistente (Default Meteo: Avigliana TO - 10098 Frazione Drubiaglio) ---
     const defaultCfg = {
       theme: 'amoled',
       rotateSec: 0, // 0 = Mai, 30 = 30 sec, 60 = 1 min, 300 = 5 min
       idleDimMin: 3,
       saverMin: 10,
-      city: 'Milano',
-      lat: 45.4642,
-      lon: 9.1895
+      city: 'Avigliana (Drubiaglio)',
+      lat: 45.0886,
+      lon: 7.3942
     };
     let cfg = Object.assign({}, defaultCfg, JSON.parse(localStorage.getItem('pcc_cfg') || '{}'));
+    // Migra automaticamente il vecchio default Milano su Avigliana (Drubiaglio)
+    if (cfg.city === 'Milano' && Math.abs(Number(cfg.lat) - 45.4642) < 0.01) {
+      cfg.city = defaultCfg.city;
+      cfg.lat = defaultCfg.lat;
+      cfg.lon = defaultCfg.lon;
+      localStorage.setItem('pcc_cfg', JSON.stringify(cfg));
+    }
     function saveCfg() {
       localStorage.setItem('pcc_cfg', JSON.stringify(cfg));
       applyTheme();
@@ -1458,7 +1607,8 @@
       'Home & Media',
       'Hardware & Processi',
       'Mixer Audio & Spettro',
-      'Finestre & Doppio Monitor'
+      'Finestre & Doppio Monitor',
+      'OPTA Burn-In Monitor'
     ];
     let currentPage = 0;
     let lastPageSwitchAt = Date.now();
@@ -1721,10 +1871,14 @@
       document.getElementById('hh').textContent = h;
       document.getElementById('mm').textContent = m;
       document.getElementById('ss').textContent = s;
+      document.getElementById('optaHh').textContent = h;
+      document.getElementById('optaMm').textContent = m;
+      document.getElementById('optaSs').textContent = s;
       document.getElementById('svH').textContent = h;
       document.getElementById('svM').textContent = m;
       const dStr = now.toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long' });
       document.getElementById('dateStr').textContent = dStr;
+      document.getElementById('optaDateStr').textContent = dStr;
       document.getElementById('svDate').textContent = dStr;
 
       // Rotazione automatica pagine se impostata (30s, 1m, 5m) e nessun modale aperto
@@ -2440,6 +2594,147 @@
           </div>
         `).join('');
       }
+
+      // OPTA Master Hub Live Monitor (Pagina 4)
+      if (d.opta) {
+        renderOptaMonitor(d.opta);
+      }
+    }
+
+    // --- OPTA Burn-In Master Monitor + Auto-Focus su Errore ---
+    const prevOptaErrorMap = new Map();
+    let optaFlashTimer = 0;
+
+    function formatOptaType(t) {
+      if (t === 'BURN_IN_RELAY') return 'RELÈ';
+      if (t === 'TEMP_CTRL') return 'TEMP';
+      if (t === 'METER') return 'METER';
+      if (t === 'TIMER') return 'TIMER';
+      return t || 'SLAVE';
+    }
+
+    function formatOptaTelem(s) {
+      const t = s.type || '';
+      const ex1 = s.extra1 || '-';
+      const ex2 = s.extra2 || '-';
+      const ex3 = s.extra3 || '0';
+      if (t === 'BURN_IN_RELAY') {
+        const errN = Number(s.errCount || ex3 || 0);
+        const errSpan = errN > 0
+          ? `<b style="color:#fecaca; background:rgba(239,68,68,0.35); padding:1px 6px; border-radius:5px;">⚠️ Err: ${errN}</b>`
+          : `<span style="color:var(--ok); font-weight:700;">Err: 0</span>`;
+        return `<span>${ex1} · Cicli: <b>${ex2}</b></span>${errSpan}`;
+      }
+      if (t === 'TEMP_CTRL') {
+        return `<span>Temp: <b>${ex1} °C</b></span><span>V1: ${ex2}V · V2: ${ex3}V</span>`;
+      }
+      if (t === 'METER') {
+        return `<span>Potenza: <b>${ex1} W</b></span><span>Energia: <b>${ex2} kWh</b></span>`;
+      }
+      if (t === 'TIMER') {
+        return `<span>Timer Tester</span><span>${ex1}</span>`;
+      }
+      return `<span>${ex1}</span><span>${ex2}</span>`;
+    }
+
+    function renderOptaMonitor(opta) {
+      const dot = document.getElementById('optaMasterDot');
+      const lbl = document.getElementById('optaMasterLbl');
+      const runBadge = document.getElementById('optaRunBadge');
+      const errBadge = document.getElementById('optaErrBadge');
+      const box = document.getElementById('optaSlavesBox');
+
+      if (!opta || !opta.reachable) {
+        dot.className = 'dot off';
+        lbl.textContent = 'OPTA MASTER (Non raggiungibile)';
+        runBadge.textContent = '🔥 0 in test';
+        errBadge.className = 'opta-badge';
+        errBadge.textContent = '—';
+        box.innerHTML = `<div style="font-size:12px; color:var(--muted); padding:12px; text-align:center;">
+          Collega il PC alla rete <b>OPTA_BURN_IN</b> (<code>192.168.1.10</code>) per visualizzare in tempo reale gli Slave con test in corso.
+        </div>`;
+        return;
+      }
+
+      dot.className = 'dot on';
+      const modeTag = opta.netMode ? ` · ${opta.netMode}` : '';
+      lbl.textContent = `MASTER ${opta.masterIp || '192.168.1.10'}${modeTag}`;
+
+      const slaves = Array.isArray(opta.slaves) ? opta.slaves : [];
+      const errCount = Number(opta.errorCount || 0);
+      runBadge.textContent = `🔥 ${slaves.length} in test`;
+
+      if (errCount > 0) {
+        errBadge.className = 'opta-badge err';
+        errBadge.textContent = `⚠️ ${errCount} in ERRORE`;
+      } else {
+        errBadge.className = 'opta-badge ok';
+        errBadge.textContent = '✅ 0 errori';
+      }
+
+      // Verifica se è comparso un NUOVO errore o è aumentato il contatore errori su uno Slave -> Auto-Focus!
+      let newErrorSlave = null;
+      const currentIds = new Set();
+      slaves.forEach((s) => {
+        const sid = String(s.id);
+        currentIds.add(sid);
+        const sig = s.hasError ? `${s.status}|${s.errCount || s.extra3 || 1}` : '';
+        const prevSig = prevOptaErrorMap.get(sid) || '';
+        if (s.hasError && sig !== prevSig) {
+          newErrorSlave = s;
+        }
+        prevOptaErrorMap.set(sid, sig);
+      });
+      for (const k of prevOptaErrorMap.keys()) {
+        if (!currentIds.has(k)) prevOptaErrorMap.delete(k);
+      }
+
+      if (newErrorSlave) {
+        // Risveglia lo schermo se era in dimming/screensaver e porta subito in primo piano la scheda OPTA (Pagina 4)!
+        wakePanel();
+        haptic();
+        if (currentPage !== 4) {
+          goPage(4, true, true);
+        }
+        flashTitle(`🚨 ERRORE SU OPTA_${newErrorSlave.id} (${newErrorSlave.name || newErrorSlave.ip})!`);
+        document.body.classList.add('opta-alarm-flash');
+        clearTimeout(optaFlashTimer);
+        optaFlashTimer = setTimeout(() => document.body.classList.remove('opta-alarm-flash'), 6500);
+      } else if (errCount === 0) {
+        document.body.classList.remove('opta-alarm-flash');
+      }
+
+      if (slaves.length === 0) {
+        box.innerHTML = `<div style="font-size:12px; color:var(--muted); padding:14px; text-align:center;">
+          Master connesso (${opta.totalSlaves || 0} slave censiti).<br/>
+          <b>Nessun test in esecuzione al momento.</b>
+        </div>`;
+        return;
+      }
+
+      box.innerHTML = slaves.map((s) => {
+        const stUp = String(s.status || '').toUpperCase();
+        const isPaused = !s.hasError && stUp.includes('PAUS');
+        const cardCls = 'opta-slave-card' + (s.hasError ? ' err' : (isPaused ? ' paused' : ''));
+        const statusColor = s.hasError ? '#fecaca' : (isPaused ? '#fde68a' : '#86efac');
+        const statusIcon = s.hasError ? '🚨 ' : (isPaused ? '⏸️ ' : '● ');
+        const noteStr = s.name ? ` · <span style="color:#e2e8f0; font-weight:500;">${s.name}</span>` : '';
+        return `
+          <div class="${cardCls}">
+            <div class="opta-row-top">
+              <div style="min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+                <b>OPTA_${s.id}</b> <span class="opta-type-pill">${formatOptaType(s.type)}</span>${noteStr}
+              </div>
+              <span style="font-size:11px; font-weight:700; color:${statusColor}; flex-shrink:0;">
+                ${statusIcon}${s.status}
+              </span>
+            </div>
+            <div class="opta-row-sub">
+              ${formatOptaTelem(s)}
+            </div>
+          </div>
+        `;
+      }).join('');
     }
 
     function renderProcList(procs) {
@@ -2689,16 +2984,27 @@
         const d = await r.json();
         if (!d || !d.current) return;
         const info = wxInfo(d.current.weather_code, d.current.is_day);
-        document.getElementById('wxIcon').textContent = info.icon;
-        document.getElementById('wxTemp').textContent = Math.round(d.current.temperature_2m) + '°';
-        document.getElementById('wxDesc').textContent = `${info.desc} · ${cfg.city}`;
+        const tempStr = Math.round(d.current.temperature_2m) + '°';
+        const descStr = `${info.desc} · ${cfg.city}`;
         const hi = Math.round(d.daily.temperature_2m_max[0]);
         const lo = Math.round(d.daily.temperature_2m_min[0]);
         const wind = Math.round(d.current.wind_speed_10m || 0);
-        document.getElementById('wxMeta').textContent = `Max ${hi}° · Min ${lo}° · Vento ${wind} km/h`;
+        const metaStr = `Max ${hi}° · Min ${lo}° · Vento ${wind} km/h`;
+
+        document.getElementById('wxIcon').textContent = info.icon;
+        document.getElementById('wxTemp').textContent = tempStr;
+        document.getElementById('wxDesc').textContent = descStr;
+        document.getElementById('wxMeta').textContent = metaStr;
+
+        document.getElementById('optaWxIcon').textContent = info.icon;
+        document.getElementById('optaWxTemp').textContent = tempStr;
+        document.getElementById('optaWxDesc').textContent = descStr;
+        document.getElementById('optaWxMeta').textContent = metaStr;
 
         const hBox = document.getElementById('wxHourly');
+        const optaHBox = document.getElementById('optaWxHourly');
         hBox.innerHTML = '';
+        optaHBox.innerHTML = '';
         const nowHour = new Date().getHours();
         let startIdx = d.hourly.time.findIndex((t) => Number(t.slice(11, 13)) >= nowHour);
         if (startIdx < 0) startIdx = 0;
@@ -2706,14 +3012,20 @@
           const idx = startIdx + k * 3;
           if (idx >= d.hourly.time.length) break;
           const hiInfo = wxInfo(d.hourly.weather_code[idx], d.hourly.is_day[idx]);
-          const item = document.createElement('div');
-          item.className = 'wx-h-item';
-          item.innerHTML = `
+          const itemHtml = `
             <span style="color:var(--muted);">${d.hourly.time[idx].slice(11, 16)}</span>
             <span>${hiInfo.icon}</span>
             <span style="font-weight:600;">${Math.round(d.hourly.temperature_2m[idx])}°</span>
           `;
+          const item = document.createElement('div');
+          item.className = 'wx-h-item';
+          item.innerHTML = itemHtml;
           hBox.appendChild(item);
+
+          const item2 = document.createElement('div');
+          item2.className = 'wx-h-item';
+          item2.innerHTML = itemHtml;
+          optaHBox.appendChild(item2);
         }
       } catch (_) {}
     }

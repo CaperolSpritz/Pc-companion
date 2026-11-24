@@ -14,8 +14,8 @@ android {
         applicationId = "com.caperolspritz.pccompanion"
         minSdk = 28 // Android 9+ required for BluetoothHidDevice API
         targetSdk = 35
-        versionCode = 7
-        versionName = "1.4.0"
+        versionCode = 8
+        versionName = "1.5.0"
     }
 
     signingConfigs {

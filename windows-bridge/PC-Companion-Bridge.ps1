@@ -1,16 +1,17 @@
 ﻿<#
 .SYNOPSIS
-    PC-Companion Bridge (v1.3.0) - Script PowerShell user-space per Pixel 6a
+    PC-Companion Bridge (v1.5.0) - Script PowerShell user-space per Pixel 6a
     Comunica bidirezionalmente via Bluetooth RFCOMM nativo (Winsock AF_BTH)
     Include:
       - Auto-terminazione istanze precedenti dello script
-      - Replica completa del MediaMonitor di PhoneBox (Windows SMTC Playing + Paused, Timeline PosMs/DurMs, Seek e Thumbnail JPEG Base64 con cache per traccia)
+      - Replica completa del MediaMonitor di PhoneBox (Windows SMTC Playing + Paused, Timeline PosMs/DurMs, Seek e Thumbnail WebP/JPEG/PNG Base64 con cache)
       - Doppio Monitor rapido: Interno (WMI) + Esterno Dell S3422DW (DDC/CI VCP 0x10 con filtro GetMonitorInfo)
+      - Integrazione Live OPTA Master Hub (GET http://192.168.1.10/status) con filtro Slave in test e rilevamento errori/allarmi
 #>
 
 $ErrorActionPreference = 'SilentlyContinue'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-$Host.UI.RawUI.WindowTitle = "PC-Companion Bridge v1.3.0 (Bluetooth RFCOMM)"
+$Host.UI.RawUI.WindowTitle = "PC-Companion Bridge v1.5.0 (Bluetooth RFCOMM + OPTA Monitor)"
 
 # 0. Termina automaticamente eventuali vecchie istanze di PC-Companion-Bridge.ps1 rimaste in background
 Get-CimInstance Win32_Process -Filter "Name = 'powershell.exe'" | Where-Object {
@@ -21,7 +22,7 @@ Get-CimInstance Win32_Process -Filter "Name = 'powershell.exe'" | Where-Object {
 }
 
 Write-Host "================================================================" -ForegroundColor Cyan
-Write-Host "   PC-COMPANION BRIDGE v1.3.0 - Media SMTC + Art & 2 Monitor    " -ForegroundColor Cyan
+Write-Host "   PC-COMPANION BRIDGE v1.5.0 - Media, 2 Monitor & OPTA Master  " -ForegroundColor Cyan
 Write-Host "   Connessione diretta Bluetooth RFCOMM (Zero ADB / Zero Admin) " -ForegroundColor Gray
 Write-Host "================================================================" -ForegroundColor Cyan
 Write-Host ""
@@ -795,6 +796,16 @@ function Handle-PhoneCommand([string]$jsonLine) {
             'lockPc' {
                 [PcCompanionNative]::LockWorkStation() | Out-Null
             }
+            'runOptaDownload' {
+                $optaDir = "C:\Users\mcapello\Documents\Antigravity\Ottimizzazione sistema OPTA burn in\output\OPTA_Burn_in_Scheduled_Download\LATEST"
+                $batFile = Get-ChildItem -Path $optaDir -Filter "OPTA_Burn_in_Scheduled_Download*.bat" -ErrorAction SilentlyContinue | Sort-Object Name -Descending | Select-Object -First 1
+                if ($batFile) {
+                    Write-Host "     -> Avvio scarico log OPTA: $($batFile.Name)" -ForegroundColor Green
+                    Start-Process -FilePath "cmd.exe" -ArgumentList "/c `"`"$($batFile.FullName)`"`""
+                } else {
+                    Write-Host "     [!] Script OPTA_Burn_in_Scheduled_Download non trovato in $optaDir" -ForegroundColor Red
+                }
+            }
             'monitorOff' {
                 [PcCompanionNative]::TurnOffMonitors()
             }
@@ -925,10 +936,116 @@ $script:cachedUptimeStr = ""
 $script:cachedNetDown = 0
 $script:cachedNetUp = 0
 $script:cachedProcs = @()
+$script:activeOptaIds = @{}
+$script:cachedOpta = @{
+    reachable   = $false
+    masterIp    = "192.168.1.10"
+    netMode     = ""
+    fw          = ""
+    time        = ""
+    totalSlaves = 0
+    testingCount = 0
+    errorCount  = 0
+    slaves      = @()
+}
+
+function Get-OptaMasterSnapshot {
+    try {
+        $req = [System.Net.WebRequest]::Create("http://192.168.1.10/status?nc=$([Environment]::TickCount)")
+        $req.Method = "GET"
+        $req.Timeout = 900
+        $resp = $req.GetResponse()
+        $sr = New-Object System.IO.StreamReader($resp.GetResponseStream(), [System.Text.Encoding]::UTF8)
+        $rawJson = $sr.ReadToEnd()
+        $sr.Close()
+        $resp.Close()
+
+        $data = $rawJson | ConvertFrom-Json
+        if ($null -eq $data) { throw "JSON vuoto" }
+
+        $allSlaves = @($data.slaves)
+        $activeList = New-Object System.Collections.Generic.List[object]
+        $errTotal = 0
+
+        foreach ($s in $allSlaves) {
+            $sid = [string]$s.id
+            $stUpper = ([string]$s.status).ToUpperInvariant()
+            $sType = [string]$s.type
+            $isOnline = [bool]$s.online
+            $ex1 = [string]$s.extra1
+            $ex2 = [string]$s.extra2
+            $ex3 = [string]$s.extra3
+
+            $isRunningOrPaused = ($stUpper -match 'RUN|CORSO|AVVIATO|PAUS')
+            $isStatusAlarm     = ($stUpper -match 'ALARM|ALLARME|LIMITE|ERR|FAULT')
+            $relayErrCount     = 0
+            if ($sType -eq 'BURN_IN_RELAY') {
+                [void][int]::TryParse($ex3, [ref]$relayErrCount)
+            }
+
+            if ($isRunningOrPaused -or $isStatusAlarm -or $relayErrCount -gt 0) {
+                $script:activeOptaIds[$sid] = $true
+            } elseif (-not $isRunningOrPaused -and $isOnline -and $stUpper -eq 'IDLE') {
+                [void]$script:activeOptaIds.Remove($sid)
+            }
+
+            $wasTesting = $script:activeOptaIds.ContainsKey($sid)
+            $droppedOfflineDuringTest = ($wasTesting -and -not $isOnline)
+            $hasError = ($isStatusAlarm -or ($relayErrCount -gt 0) -or $droppedOfflineDuringTest)
+
+            # Mostra solo gli slave che hanno un test in corso (o che hanno generato un errore/allarme durante il test)
+            if ($isRunningOrPaused -or $hasError) {
+                if ($hasError) { $errTotal++ }
+                $activeList.Add(@{
+                    id       = $sid
+                    ip       = [string]$s.ip
+                    type     = $sType
+                    fw       = [string]$s.fw
+                    status   = if ($droppedOfflineDuringTest) { "OFFLINE" } else { [string]$s.status }
+                    name     = [string]$s.name
+                    extra1   = $ex1
+                    extra2   = $ex2
+                    extra3   = $ex3
+                    errCount = $relayErrCount
+                    online   = $isOnline
+                    hasError = $hasError
+                })
+            }
+        }
+
+        # Ordina mettendo gli Slave in ERRORE sempre in cima, poi per ID numerico
+        $sortedSlaves = @($activeList | Sort-Object -Property @{Expression={ -not $_.hasError }}, @{Expression={ [int]($_.id -replace '\D','') }})
+
+        return @{
+            reachable    = $true
+            masterIp     = if ($data.master_ip) { [string]$data.master_ip } else { "192.168.1.10" }
+            netMode      = [string]$data.net_mode
+            fw           = [string]$data.master_fw
+            time         = [string]$data.time
+            totalSlaves  = $allSlaves.Count
+            testingCount = $sortedSlaves.Count
+            errorCount   = $errTotal
+            slaves       = $sortedSlaves
+        }
+    } catch {
+        return @{
+            reachable    = $false
+            masterIp     = "192.168.1.10"
+            netMode      = ""
+            fw           = ""
+            time         = ""
+            totalSlaves  = 0
+            testingCount = 0
+            errorCount   = 0
+            slaves       = @()
+        }
+    }
+}
 
 function Build-TelemetryJson {
-    # Esegue le query WMI pesanti solo ogni 3 cicli (~3s) per mantenere i comandi Bluetooth ultra-reattivi (<20ms)
+    # Esegue le query WMI pesanti e il polling OPTA Master ogni 3 cicli (~2.5s) per mantenere i comandi Bluetooth ultra-reattivi (<20ms)
     if ($script:lastDiskTick % 3 -eq 0) {
+        $script:cachedOpta = Get-OptaMasterSnapshot
         $os = Get-CimInstance Win32_OperatingSystem
         $cpuLoad = (Get-CimInstance Win32_Processor | Measure-Object -Property LoadPercentage -Average).Average
         if ($null -eq $cpuLoad) { $cpuLoad = 0 }
@@ -1014,9 +1131,10 @@ function Build-TelemetryJson {
         brightnessInt  = $script:cachedIntBrightness
         brightnessExt  = $script:cachedExtBrightness
         extMonitorName = [PcCompanionNative]::cachedExtName
+        opta           = $script:cachedOpta
     }
 
-    return ($payload | ConvertTo-Json -Depth 4 -Compress)
+    return ($payload | ConvertTo-Json -Depth 5 -Compress)
 }
 
 $btAddr = Find-PixelBluetoothAddress
