@@ -1,17 +1,18 @@
 ﻿<#
 .SYNOPSIS
-    PC-Companion Bridge (v1.5.0) - Script PowerShell user-space per Pixel 6a
+    PC-Companion Bridge (v1.6.0) - Script PowerShell user-space per Pixel 6a
     Comunica bidirezionalmente via Bluetooth RFCOMM nativo (Winsock AF_BTH)
     Include:
       - Auto-terminazione istanze precedenti dello script
       - Replica completa del MediaMonitor di PhoneBox (Windows SMTC Playing + Paused, Timeline PosMs/DurMs, Seek e Thumbnail WebP/JPEG/PNG Base64 con cache)
       - Doppio Monitor rapido: Interno (WMI) + Esterno Dell S3422DW (DDC/CI VCP 0x10 con filtro GetMonitorInfo)
       - Integrazione Live OPTA Master Hub (GET http://192.168.1.10/status) con filtro Slave in test e rilevamento errori/allarmi
+      - Monitoraggio Live Antigravity (rileva pulsante blu Submit/Proceed/Run e fine turno da transcript.jsonl con auto-chiusura)
 #>
 
 $ErrorActionPreference = 'SilentlyContinue'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-$Host.UI.RawUI.WindowTitle = "PC-Companion Bridge v1.5.0 (Bluetooth RFCOMM + OPTA Monitor)"
+$Host.UI.RawUI.WindowTitle = "PC-Companion Bridge v1.6.0 (Bluetooth RFCOMM + OPTA & Antigravity Monitor)"
 
 # 0. Termina automaticamente eventuali vecchie istanze di PC-Companion-Bridge.ps1 rimaste in background
 Get-CimInstance Win32_Process -Filter "Name = 'powershell.exe'" | Where-Object {
@@ -22,7 +23,7 @@ Get-CimInstance Win32_Process -Filter "Name = 'powershell.exe'" | Where-Object {
 }
 
 Write-Host "================================================================" -ForegroundColor Cyan
-Write-Host "   PC-COMPANION BRIDGE v1.5.0 - Media, 2 Monitor & OPTA Master  " -ForegroundColor Cyan
+Write-Host "   PC-COMPANION BRIDGE v1.6.0 - Media, Monitor, OPTA & AGY      " -ForegroundColor Cyan
 Write-Host "   Connessione diretta Bluetooth RFCOMM (Zero ADB / Zero Admin) " -ForegroundColor Gray
 Write-Host "================================================================" -ForegroundColor Cyan
 Write-Host ""
@@ -510,7 +511,49 @@ public class PcCompanionNative {
     public static void FocusWindow(long hwnd) {
         IntPtr h = new IntPtr(hwnd);
         ShowWindow(h, 9);
+        keybd_event(0x12, 0, 0, UIntPtr.Zero);
+        keybd_event(0x12, 0, 0x0002, UIntPtr.Zero);
         SetForegroundWindow(h);
+    }
+
+    public static bool IsAntigravityForeground() {
+        IntPtr fg = GetForegroundWindow();
+        if (fg == IntPtr.Zero) return false;
+        uint pid; GetWindowThreadProcessId(fg, out pid);
+        try {
+            string pName = Process.GetProcessById((int)pid).ProcessName;
+            if (pName.IndexOf("Antigravity", StringComparison.OrdinalIgnoreCase) >= 0) return true;
+        } catch { }
+        int len = GetWindowTextLength(fg);
+        if (len > 0) {
+            var sb = new StringBuilder(len + 1);
+            GetWindowText(fg, sb, sb.Capacity);
+            if (sb.ToString().IndexOf("Antigravity", StringComparison.OrdinalIgnoreCase) >= 0) return true;
+        }
+        return false;
+    }
+
+    public static bool FocusAntigravityWindow() {
+        IntPtr found = IntPtr.Zero;
+        EnumWindows((hWnd, lParam) => {
+            if (!IsWindowVisible(hWnd)) return true;
+            int len = GetWindowTextLength(hWnd);
+            if (len <= 0) return true;
+            uint pid; GetWindowThreadProcessId(hWnd, out pid);
+            try {
+                string pName = Process.GetProcessById((int)pid).ProcessName;
+                if (pName.IndexOf("Antigravity", StringComparison.OrdinalIgnoreCase) >= 0) {
+                    found = hWnd;
+                    return false;
+                }
+            } catch { }
+            return true;
+        }, IntPtr.Zero);
+        if (found != IntPtr.Zero) {
+            FocusWindow(found.ToInt64());
+            return true;
+        }
+        return false;
     }
 
     public static void CloseWindow(long hwnd) {
@@ -806,6 +849,16 @@ function Handle-PhoneCommand([string]$jsonLine) {
                     Write-Host "     [!] Script OPTA_Burn_in_Scheduled_Download non trovato in $optaDir" -ForegroundColor Red
                 }
             }
+            'focusAntigravity' {
+                Write-Host "     -> Porto in primo piano la finestra di Antigravity sul PC" -ForegroundColor Cyan
+                [void][PcCompanionNative]::FocusAntigravityWindow()
+            }
+            'dismissAntigravity' {
+                if ($script:lastAgStepKey) {
+                    $script:dismissedAgKey = $script:lastAgStepKey
+                    Write-Host "     -> Banner Antigravity chiuso manualmente ($($script:dismissedAgKey))" -ForegroundColor DarkGray
+                }
+            }
             'monitorOff' {
                 [PcCompanionNative]::TurnOffMonitors()
             }
@@ -937,6 +990,148 @@ $script:cachedNetDown = 0
 $script:cachedNetUp = 0
 $script:cachedProcs = @()
 $script:activeOptaIds = @{}
+$script:lastAgStepKey = ""
+$script:dismissedAgKey = ""
+$script:agFgTicks = 0
+$script:cachedAgStatus = @{
+    waiting = $false
+    kind    = ""
+    badge   = ""
+    title   = ""
+    detail  = ""
+    stepKey = ""
+}
+
+function Get-AntigravitySnapshot {
+    try {
+        $brainDir = Join-Path $env:USERPROFILE ".gemini\antigravity\brain"
+        if (-not (Test-Path $brainDir)) {
+            return @{ waiting = $false; kind = ""; badge = ""; title = ""; detail = ""; stepKey = "" }
+        }
+
+        # Trova il transcript.jsonl modificato più di recente nelle conversazioni attive
+        $latestLog = Get-ChildItem -Path $brainDir -Directory -ErrorAction SilentlyContinue |
+            Where-Object { Test-Path (Join-Path $_.FullName ".system_generated\logs\transcript.jsonl") } |
+            ForEach-Object { Get-Item (Join-Path $_.FullName ".system_generated\logs\transcript.jsonl") } |
+            Sort-Object LastWriteTimeUtc -Descending |
+            Select-Object -First 1
+
+        if ($null -eq $latestLog) {
+            return @{ waiting = $false; kind = ""; badge = ""; title = ""; detail = ""; stepKey = "" }
+        }
+
+        $ageMin = ([DateTime]::UtcNow - $latestLog.LastWriteTimeUtc).TotalMinutes
+        if ($ageMin -gt 60) {
+            return @{ waiting = $false; kind = ""; badge = ""; title = ""; detail = ""; stepKey = "" }
+        }
+
+        $convId = $latestLog.Directory.Parent.Parent.Name
+        $tailLines = @(Get-Content -Path $latestLog.FullName -Tail 6 -Encoding UTF8 -ErrorAction SilentlyContinue)
+        if ($tailLines.Count -eq 0) {
+            return @{ waiting = $false; kind = ""; badge = ""; title = ""; detail = ""; stepKey = "" }
+        }
+
+        $lastStep = $tailLines[-1] | ConvertFrom-Json
+        if ($null -eq $lastStep) {
+            return @{ waiting = $false; kind = ""; badge = ""; title = ""; detail = ""; stepKey = "" }
+        }
+
+        $stepKey = "$convId|$($lastStep.step_index)"
+        $script:lastAgStepKey = $stepKey
+
+        $stepTimeUtc = $latestLog.LastWriteTimeUtc
+        if ($lastStep.created_at) {
+            try { $stepTimeUtc = ([DateTimeOffset]::Parse([string]$lastStep.created_at)).UtcDateTime } catch {}
+        }
+        $secSinceStep = ([DateTime]::UtcNow - $stepTimeUtc).TotalSeconds
+
+        # Caso 1: L'ultimo step è un PLANNER_RESPONSE con tool_calls ancora in attesa di esecuzione/conferma (Pulsante Blu Submit / Run / Proceed)
+        if ($lastStep.source -eq 'MODEL' -and $lastStep.type -eq 'PLANNER_RESPONSE' -and $null -ne $lastStep.tool_calls -and @($lastStep.tool_calls).Count -gt 0) {
+            $tCalls = @($lastStep.tool_calls)
+            $firstTool = $tCalls[0]
+            $tName = [string]$firstTool.name
+
+            if ($tName -eq 'ask_question') {
+                $qText = "Rispondi alla domanda e premi il pulsante blu Submit"
+                try {
+                    if ($firstTool.args.questions -and @($firstTool.args.questions).Count -gt 0) {
+                        $qText = [string]$firstTool.args.questions[0].question
+                    }
+                } catch {}
+                return @{
+                    waiting = $true
+                    kind    = "submit"
+                    badge   = "PULSANTE BLU · SUBMIT"
+                    title   = "Domanda in attesa di Submit"
+                    detail  = $qText
+                    stepKey = $stepKey
+                }
+            }
+
+            # Controlla se è un comando o altro tool fermo da >= 3 secondi in attesa del pulsante blu "Submit / Run / Accept"
+            if ($secSinceStep -ge 3.0 -and $tName -ne 'schedule') {
+                $summary = $tName
+                try {
+                    if ($firstTool.args.toolSummary) {
+                        $summary = ([string]$firstTool.args.toolSummary).Trim('"')
+                    } elseif ($firstTool.args.CommandLine) {
+                        $summary = ([string]$firstTool.args.CommandLine).Trim('"')
+                    }
+                } catch {}
+                if ($summary.Length -gt 75) { $summary = $summary.Substring(0, 72) + "..." }
+                return @{
+                    waiting = $true
+                    kind    = "submit"
+                    badge   = "PULSANTE BLU · SUBMIT"
+                    title   = "Conferma azione richiesta ($tName)"
+                    detail  = $summary
+                    stepKey = $stepKey
+                }
+            }
+        }
+
+        # Caso 2: L'ultimo step è un PLANNER_RESPONSE senza tool_calls (Antigravity ha finito il turno o posto una domanda in chat)
+        $hasNoTools = ($null -eq $lastStep.tool_calls -or @($lastStep.tool_calls).Count -eq 0)
+        if ($lastStep.source -eq 'MODEL' -and $lastStep.type -eq 'PLANNER_RESPONSE' -and $hasNoTools) {
+            if ($stepKey -eq $script:dismissedAgKey) {
+                return @{ waiting = $false; kind = ""; badge = ""; title = ""; detail = ""; stepKey = $stepKey }
+            }
+
+            # Se l'utente ha portato in primo piano la finestra di Antigravity sul PC per leggere la risposta,
+            # dopo ~4 secondi chiude automaticamente il banner "Fine turno"
+            if ([PcCompanionNative]::IsAntigravityForeground()) {
+                $script:agFgTicks++
+                if ($script:agFgTicks -ge 2) {
+                    $script:dismissedAgKey = $stepKey
+                    return @{ waiting = $false; kind = ""; badge = ""; title = ""; detail = ""; stepKey = $stepKey }
+                }
+            } else {
+                $script:agFgTicks = 0
+            }
+
+            $cleanText = (([string]$lastStep.content) -replace '[#*`>\r\n]+', ' ').Trim()
+            if ($cleanText.Length -gt 85) {
+                $cleanText = $cleanText.Substring($cleanText.Length - 85).Trim()
+            }
+            if (-not $cleanText) { $cleanText = "In attesa di una tua risposta o istruzione in chat." }
+
+            return @{
+                waiting = $true
+                kind    = "reply"
+                badge   = "IN ATTESA DI RISPOSTA"
+                title   = "Antigravity ha terminato il turno"
+                detail  = $cleanText
+                stepKey = $stepKey
+            }
+        }
+
+        # Qualsiasi altro stato (USER_INPUT appena inviato o GENERIC in esecuzione): Antigravity sta lavorando!
+        $script:agFgTicks = 0
+        return @{ waiting = $false; kind = ""; badge = ""; title = ""; detail = ""; stepKey = $stepKey }
+    } catch {
+        return @{ waiting = $false; kind = ""; badge = ""; title = ""; detail = ""; stepKey = "" }
+    }
+}
 $script:cachedOpta = @{
     reachable   = $false
     masterIp    = "192.168.1.10"
@@ -1043,6 +1238,9 @@ function Get-OptaMasterSnapshot {
 }
 
 function Build-TelemetryJson {
+    # Aggiorna ad ogni ciclo (~1s) lo stato di Antigravity (lettura leggerissima delle ultime 6 righe di transcript.jsonl)
+    $script:cachedAgStatus = Get-AntigravitySnapshot
+
     # Esegue le query WMI pesanti e il polling OPTA Master ogni 3 cicli (~2.5s) per mantenere i comandi Bluetooth ultra-reattivi (<20ms)
     if ($script:lastDiskTick % 3 -eq 0) {
         $script:cachedOpta = Get-OptaMasterSnapshot
@@ -1132,6 +1330,7 @@ function Build-TelemetryJson {
         brightnessExt  = $script:cachedExtBrightness
         extMonitorName = [PcCompanionNative]::cachedExtName
         opta           = $script:cachedOpta
+        antigravity    = $script:cachedAgStatus
     }
 
     return ($payload | ConvertTo-Json -Depth 5 -Compress)

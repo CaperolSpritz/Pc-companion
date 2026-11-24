@@ -982,6 +982,89 @@
       color: #7dd3fc;
     }
 
+    /* --- Box Antigravity in Attesa (in basso a sinistra nella Pagina 5, compatta Ora e Meteo) --- */
+    @keyframes agBluePulse {
+      0%, 100% { box-shadow: 0 0 12px rgba(59, 130, 246, 0.35), inset 0 0 12px rgba(59, 130, 246, 0.15); }
+      50%      { box-shadow: 0 0 22px rgba(59, 130, 246, 0.72), inset 0 0 20px rgba(59, 130, 246, 0.32); }
+    }
+    #optaLeftCol .clock-main,
+    #optaLeftCol .date-line,
+    #optaLeftCol .wx-card {
+      transition: all 0.28s cubic-bezier(0.2, 0.8, 0.2, 1);
+    }
+    #optaLeftCol.has-ag-box .clock-wrap {
+      margin: 0;
+      padding: 0;
+    }
+    #optaLeftCol.has-ag-box .clock-main {
+      font-size: clamp(36px, 8.2vw, 62px);
+    }
+    #optaLeftCol.has-ag-box .date-line {
+      font-size: 12px;
+      margin-top: 2px;
+    }
+    #optaLeftCol.has-ag-box .wx-card {
+      padding: 6px 10px;
+      border-radius: 13px;
+    }
+    #optaLeftCol.has-ag-box .wx-icon {
+      font-size: 20px;
+    }
+    #optaLeftCol.has-ag-box .wx-temp {
+      font-size: 18px;
+    }
+    .ag-wait-box {
+      display: none;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: 4px;
+      padding: 9px 12px;
+      border-radius: 15px;
+      background: linear-gradient(135deg, rgba(37, 99, 235, 0.32), rgba(14, 165, 233, 0.14));
+      border: 1.5px solid #3b82f6;
+      animation: agBluePulse 1.4s ease-in-out infinite;
+      cursor: pointer;
+    }
+    .ag-wait-box.visible {
+      display: flex;
+    }
+    .ag-top-line {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+    }
+    .ag-submit-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: #2563eb;
+      color: #ffffff;
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+    .ag-title {
+      font-size: 12.5px;
+      font-weight: 700;
+      color: #f8fafc;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .ag-detail {
+      font-size: 11px;
+      color: #bfdbfe;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      line-height: 1.25;
+    }
+
     /* --- Modals --- */
     .modal-backdrop {
       position: fixed;
@@ -1416,8 +1499,8 @@
 
       <!-- ================= PAGINA 4: OPTA MASTER HUB - MONITORAGGIO SLAVE IN TEST ================= -->
       <section class="page" id="page4">
-        <!-- Colonna Sinistra: Ora, Data e Meteo (Avigliana - Drubiaglio) -->
-        <div class="col-pane">
+        <!-- Colonna Sinistra: Ora, Data, Meteo + Box dinamico Antigravity in basso a sinistra -->
+        <div id="optaLeftCol" class="col-pane">
           <div class="clock-wrap sub-shift">
             <div class="clock-main">
               <span id="optaHh">--</span><span class="colon">:</span><span id="optaMm">--</span>
@@ -1438,6 +1521,19 @@
               </div>
             </div>
             <div id="optaWxHourly" class="wx-hourly"></div>
+          </div>
+
+          <!-- Box Antigravity in Attesa: compare in basso a sinistra rimpicciolendo Ora e Meteo -->
+          <div id="agWaitBox" class="ag-wait-box" onclick="sendBridge({cmd:'focusAntigravity'})">
+            <div class="ag-top-line">
+              <span id="agWaitBadge" class="ag-submit-pill">✦ PULSANTE BLU · SUBMIT</span>
+              <div style="display:flex; align-items:center; gap:5px;" onclick="event.stopPropagation()">
+                <button class="mini-btn" style="background:#2563eb; border-color:#60a5fa; color:#fff; padding:2px 7px; font-size:10.5px;" onclick="sendBridge({cmd:'focusAntigravity'})">🖥️ Apri</button>
+                <button class="mini-btn" style="padding:2px 6px; font-size:10.5px;" onclick="dismissAntigravityBanner()">✕</button>
+              </div>
+            </div>
+            <div id="agWaitTitle" class="ag-title">Antigravity attende una tua risposta</div>
+            <div id="agWaitDetail" class="ag-detail">Clicca Submit sul PC per proseguire il task</div>
           </div>
         </div>
 
@@ -1472,7 +1568,7 @@
   <div id="btModal" class="modal-backdrop" onclick="if(event.target===this)closeModals()">
     <div class="modal-card">
       <div class="modal-head">
-        <span>Connessione Bluetooth HID (v1.5.0)</span>
+        <span>Connessione Bluetooth HID (v1.6.0)</span>
         <button class="close-btn" onclick="closeModals()">Chiudi</button>
       </div>
       <div id="btDiagBox" style="padding:10px 12px; border-radius:12px; background:rgba(255,255,255,0.04); border:1px solid var(--line); font-size:12px; line-height:1.45;">
@@ -2598,6 +2694,56 @@
       // OPTA Master Hub Live Monitor (Pagina 4)
       if (d.opta) {
         renderOptaMonitor(d.opta);
+      }
+
+      // Banner Antigravity in Attesa (in basso a sinistra nella Pagina 5 / #page4)
+      if (d.antigravity) {
+        renderAntigravityBanner(d.antigravity);
+      }
+    }
+
+    // --- Box Antigravity in Attesa (Pagina 5 - Basso a Sinistra) ---
+    let lastNotifiedAgStep = '';
+    let localDismissedAgStep = '';
+
+    function dismissAntigravityBanner() {
+      if (lastNotifiedAgStep) localDismissedAgStep = lastNotifiedAgStep;
+      const col = document.getElementById('optaLeftCol');
+      const box = document.getElementById('agWaitBox');
+      col.classList.remove('has-ag-box');
+      box.classList.remove('visible');
+      sendBridge({ cmd: 'dismissAntigravity' });
+    }
+
+    function renderAntigravityBanner(ag) {
+      const col = document.getElementById('optaLeftCol');
+      const box = document.getElementById('agWaitBox');
+      const badge = document.getElementById('agWaitBadge');
+      const title = document.getElementById('agWaitTitle');
+      const detail = document.getElementById('agWaitDetail');
+
+      const stepKey = ag && ag.stepKey ? String(ag.stepKey) : '';
+      const isWaiting = !!(ag && ag.waiting && stepKey !== localDismissedAgStep);
+
+      if (!isWaiting) {
+        col.classList.remove('has-ag-box');
+        box.classList.remove('visible');
+        return;
+      }
+
+      col.classList.add('has-ag-box');
+      box.classList.add('visible');
+      badge.textContent = `✦ ${ag.badge || 'PULSANTE BLU · SUBMIT'}`;
+      title.textContent = ag.title || 'Antigravity attende una tua risposta';
+      detail.textContent = ag.detail || 'Clicca Submit o rispondi sul PC per proseguire';
+
+      // Quando compare un nuovo stato di attesa (specialmente un pulsante blu Submit), avvisa con un leggero feedback
+      if (stepKey && stepKey !== lastNotifiedAgStep) {
+        lastNotifiedAgStep = stepKey;
+        if (ag.kind === 'submit') {
+          wakePanel();
+          haptic();
+        }
       }
     }
 
