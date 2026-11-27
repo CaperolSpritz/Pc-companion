@@ -994,6 +994,8 @@ $script:cachedNetDown = 0
 $script:cachedNetUp = 0
 $script:cachedProcs = @()
 $script:activeOptaIds = @{}
+$script:optaFailStreak = 0
+$script:lastWifiReconnectAt = [DateTime]::MinValue
 $script:lastAgStepKey = ""
 $script:dismissedAgKey = ""
 $script:agFgTicks = 0
@@ -1150,9 +1152,21 @@ $script:cachedOpta = @{
 
 function Get-OptaMasterSnapshot {
     try {
+        # Pre-check TCP rapido (400 ms) per non bloccare mai il loop Bluetooth se 192.168.1.10 non è instradabile
+        $tcp = New-Object System.Net.Sockets.TcpClient
+        $ar = $tcp.BeginConnect("192.168.1.10", 80, $null, $null)
+        $connected = $ar.AsyncWaitHandle.WaitOne(450, $false)
+        if (-not $connected) {
+            $tcp.Close()
+            throw "Timeout connessione TCP 192.168.1.10:80"
+        }
+        $tcp.EndConnect($ar)
+        $tcp.Close()
+
         $req = [System.Net.WebRequest]::Create("http://192.168.1.10/status?nc=$([Environment]::TickCount)")
+        $req.Proxy = $null
         $req.Method = "GET"
-        $req.Timeout = 900
+        $req.Timeout = 1200
         $resp = $req.GetResponse()
         $sr = New-Object System.IO.StreamReader($resp.GetResponseStream(), [System.Text.Encoding]::UTF8)
         $rawJson = $sr.ReadToEnd()
@@ -1161,6 +1175,7 @@ function Get-OptaMasterSnapshot {
 
         $data = $rawJson | ConvertFrom-Json
         if ($null -eq $data) { throw "JSON vuoto" }
+        $script:optaFailStreak = 0
 
         $allSlaves = @($data.slaves)
         $activeList = New-Object System.Collections.Generic.List[object]
@@ -1227,6 +1242,26 @@ function Get-OptaMasterSnapshot {
             slaves       = $sortedSlaves
         }
     } catch {
+        $script:optaFailStreak++
+        # Quando il PC è collegato via cavo LAN alla Docking Station, Windows tende a scollegare da solo il Wi-Fi OPTA_BURN_IN:
+        # lo riconnettiamo automaticamente in background (max 1 tentativo ogni 25s)
+        $nowUtc = [DateTime]::UtcNow
+        if (($nowUtc - $script:lastWifiReconnectAt).TotalSeconds -ge 25) {
+            $script:lastWifiReconnectAt = $nowUtc
+            try {
+                $wlanInfo = (netsh wlan show interfaces) -join "`n"
+                if ($wlanInfo -notmatch 'OPTA_BURN_IN') {
+                    Write-Host "  [OPTA-WIFI] Scheda Wi-Fi scollegata da OPTA_BURN_IN: riconnessione automatica in corso..." -ForegroundColor Yellow
+                    $null = netsh wlan connect name="OPTA_BURN_IN"
+                }
+            } catch {}
+        }
+
+        # Se ha fallito solo per 1-2 cicli transitori e avevamo già dati validi, mantiene l'ultimo snapshot senza sfarfallare
+        if ($script:optaFailStreak -le 2 -and $script:cachedOpta.reachable) {
+            return $script:cachedOpta
+        }
+
         return @{
             reachable    = $false
             masterIp     = "192.168.1.10"
