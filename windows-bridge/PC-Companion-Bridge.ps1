@@ -1190,25 +1190,25 @@ function Get-OptaMasterSnapshot {
             $ex2 = [string]$s.extra2
             $ex3 = [string]$s.extra3
 
-            $isRunningOrPaused = ($stUpper -match 'RUN|CORSO|AVVIATO|PAUS')
-            $isStatusAlarm     = ($stUpper -match 'ALARM|ALLARME|LIMITE|ERR|FAULT')
+            $isRunningOrPaused = ($isOnline -and ($stUpper -match 'RUN|CORSO|AVVIATO|PAUS'))
+            $isStatusAlarm     = ($isOnline -and ($stUpper -match 'ALARM|ALLARME|ERR|FAULT'))
             $relayErrCount     = 0
             if ($sType -eq 'BURN_IN_RELAY') {
                 [void][int]::TryParse($ex3, [ref]$relayErrCount)
             }
 
-            if ($isRunningOrPaused -or $isStatusAlarm -or $relayErrCount -gt 0) {
+            if ($isRunningOrPaused -or $isStatusAlarm) {
                 $script:activeOptaIds[$sid] = $true
-            } elseif (-not $isRunningOrPaused -and $isOnline -and $stUpper -eq 'IDLE') {
+            } elseif ($isOnline -and ($stUpper -eq 'IDLE' -or $stUpper -match 'LIMIT')) {
                 [void]$script:activeOptaIds.Remove($sid)
             }
 
             $wasTesting = $script:activeOptaIds.ContainsKey($sid)
             $droppedOfflineDuringTest = ($wasTesting -and -not $isOnline)
-            $hasError = ($isStatusAlarm -or ($relayErrCount -gt 0) -or $droppedOfflineDuringTest)
+            $hasError = (($isRunningOrPaused -and $relayErrCount -gt 0) -or $isStatusAlarm -or $droppedOfflineDuringTest)
 
-            # Mostra solo gli slave che hanno un test in corso (o che hanno generato un errore/allarme durante il test)
-            if ($isRunningOrPaused -or $hasError) {
+            # Mostra solo gli slave che stanno effettivamente eseguendo un test ora (o che sono caduti offline mentre eseguivano un test)
+            if ($isRunningOrPaused -or $isStatusAlarm -or $droppedOfflineDuringTest) {
                 if ($hasError) { $errTotal++ }
                 $activeList.Add(@{
                     id       = $sid
