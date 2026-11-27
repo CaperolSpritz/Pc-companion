@@ -1568,7 +1568,7 @@
   <div id="btModal" class="modal-backdrop" onclick="if(event.target===this)closeModals()">
     <div class="modal-card">
       <div class="modal-head">
-        <span>Connessione Bluetooth HID (v1.6.0)</span>
+        <span>Connessione Bluetooth HID (v1.6.1)</span>
         <button class="close-btn" onclick="closeModals()">Chiudi</button>
       </div>
       <div id="btDiagBox" style="padding:10px 12px; border-radius:12px; background:rgba(255,255,255,0.04); border:1px solid var(--line); font-size:12px; line-height:1.45;">
@@ -1610,11 +1610,14 @@
   <div id="oledModal" class="modal-backdrop" onclick="if(event.target===this)closeModals()">
     <div class="modal-card">
       <div class="modal-head">
-        <span>🛡️ Protezione AMOLED &amp; Rotazione</span>
+        <span>🛡️ Protezione AMOLED &amp; Rotazione (v1.6.1)</span>
         <button class="close-btn" onclick="closeModals()">Chiudi</button>
       </div>
+      <div id="oledPhoneDiag" style="padding:8px 11px; border-radius:11px; background:rgba(255,255,255,0.04); border:1px solid var(--line); font-size:11.5px; color:#d1d5db;">
+        Lettura sensori Pixel 6a...
+      </div>
       <div style="font-size:12px; color:var(--muted);">
-        Il <b>Pixel Shift Orbitale</b> (±3px ogni 60s) è sempre attivo su tutte le 4 pagine.
+        Il <b>Pixel Shift Orbitale</b> (±3px ogni 60s) e il <b>Watchdog Anti-Schermo Bianco</b> sono sempre attivi. A PC bloccato (<code>Win+L</code>) lo schermo resta visibile per <b>20 min</b> su OPTA/Antigravity e poi si spegne.
       </div>
       <div>
         <div style="font-size:12px; color:var(--muted); margin-bottom:6px;">Rotazione Automatica Schermate:</div>
@@ -1989,7 +1992,7 @@
     }
     setInterval(tickClock, 1000);
 
-    // --- OLED Anti-Burn-in: Pixel Shift Orbitale + Idle Dim + Floating Saver ---
+    // --- OLED Anti-Burn-in: Pixel Shift Orbitale + Idle Dim + Floating Saver + 20min PC Lock ---
     const ORBIT = [
       [0, 0], [2, 0], [3, 1], [3, 3], [1, 3], [-1, 3],
       [-3, 2], [-3, 0], [-3, -2], [-1, -3], [1, -3], [3, -1]
@@ -1998,6 +2001,11 @@
     let lastActivity = Date.now();
     let isDimmed = false;
     let isSaver = false;
+    let pcIsLocked = false;
+    let pcLockedSince = 0;
+    let screenOffReleased = false;
+    let thermalThrottle = false;
+    let phoneDiagState = { level: -1, plugged: false, temp: 0, brightnessPct: -1 };
 
     function stepPixelShift() {
       orbitStep = (orbitStep + 1) % ORBIT.length;
@@ -2019,6 +2027,12 @@
       el.style.transform = `translate(${dx}px, ${dy}px)`;
     }
 
+    function applyNormalBrightness() {
+      // Se il telefono supera i 38°C, dimezza precauzionalmente la luminosità; altrimenti usa quella normale di sistema (-1)
+      const target = thermalThrottle ? 0.18 : -1;
+      try { A && A.setBrightness(target); } catch (_) {}
+    }
+
     function enterDim() {
       if (isDimmed || isSaver) return;
       isDimmed = true;
@@ -2037,15 +2051,37 @@
 
     function wakePanel() {
       lastActivity = Date.now();
+      if (screenOffReleased) {
+        screenOffReleased = false;
+        try { A && A.setKeepScreenOn(true); } catch (_) {}
+      }
       if (!isDimmed && !isSaver) return false;
       isDimmed = false;
       isSaver = false;
       document.body.classList.remove('dimmed', 'saver');
-      try { A && A.setBrightness(-1); } catch (_) {}
+      applyNormalBrightness();
       return true;
     }
 
     function checkIdleState() {
+      // Invia il battito cardiaco al Watchdog Nativo Kotlin (impedisce qualsiasi schermata bianca bloccata)
+      try { A && A.heartbeat && A.heartbeat(); } catch (_) {}
+
+      // Se il PC è bloccato (Win+L):
+      // - Per i primi 20 minuti: tiene acceso il pannello (per mostrare OPTA Master e Antigravity)
+      // - Trascorsi 20 minuti: entra in Screensaver OLED (1%) e rilascia FLAG_KEEP_SCREEN_ON così il display si spegne fisicamente!
+      if (pcIsLocked && pcLockedSince > 0) {
+        const lockedMs = Date.now() - pcLockedSince;
+        if (lockedMs >= 20 * 60000) {
+          if (!isSaver) enterSaver();
+          if (!screenOffReleased) {
+            screenOffReleased = true;
+            try { A && A.setKeepScreenOn(false); } catch (_) {}
+          }
+        }
+        return;
+      }
+
       const idleMs = Date.now() - lastActivity;
       const saverMs = (cfg.saverMin || 0) * 60000;
       const dimMs = (cfg.idleDimMin || 0) * 60000;
@@ -2061,6 +2097,7 @@
         e.stopPropagation();
         e.preventDefault();
         haptic();
+        if (pcIsLocked) pcLockedSince = Date.now(); // rinnova i 20 minuti se tocchi lo schermo
         wakePanel();
       });
     });
@@ -2072,12 +2109,14 @@
     let darkSince = 0;
     window.onAndroidSensor = (kind, value) => {
       if (kind === 'proximity' && value === true && (isDimmed || isSaver)) {
-        wakePanel();
+        if (!pcIsLocked || (Date.now() - pcLockedSince < 20 * 60000)) {
+          wakePanel();
+        }
       } else if (kind === 'light') {
         const lux = Number(value);
         if (lux < 2) {
           if (!darkSince) darkSince = Date.now();
-          else if (Date.now() - darkSince > 45000 && !isSaver && Date.now() - lastActivity > 60000) {
+          else if (!pcIsLocked && Date.now() - darkSince > 45000 && !isSaver && Date.now() - lastActivity > 60000) {
             enterSaver();
           }
         } else {
@@ -2086,13 +2125,46 @@
       }
     };
 
-    // --- Batteria Telefono ---
+    // --- Batteria, Temperatura & Luminosità Schermo Pixel 6a ---
     function updateBattery() {
       if (!A || !A.battery) return;
       try {
         const b = JSON.parse(A.battery());
+        phoneDiagState = b;
+        const tempC = Number(b.temp || 0);
+        const brPct = (b.brightnessPct !== undefined) ? Number(b.brightnessPct) : -1;
+
         if (b.level >= 0) {
-          document.getElementById('batLabel').textContent = `${b.plugged ? '⚡' : '🔋'} ${b.level}%`;
+          const tempTag = tempC > 0 ? ` · ${Math.round(tempC)}°C` : '';
+          document.getElementById('batLabel').textContent = `${b.plugged ? '⚡' : '🔋'} ${b.level}%${tempTag}`;
+        }
+
+        // Protezione Termica Automatica (> 38.0 °C riduce luminosità, < 36.5 °C ripristina)
+        if (tempC >= 38.0 && !thermalThrottle) {
+          thermalThrottle = true;
+          if (!isDimmed && !isSaver) applyNormalBrightness();
+        } else if (tempC > 0 && tempC <= 36.5 && thermalThrottle) {
+          thermalThrottle = false;
+          if (!isDimmed && !isSaver) applyNormalBrightness();
+        }
+
+        const diagEl = document.getElementById('oledPhoneDiag');
+        if (diagEl) {
+          diagEl.innerHTML = `
+            <div>📱 <b>Luminosità Sistema Pixel 6a:</b> <span style="color:rgb(var(--accent));font-weight:700;">${brPct >= 0 ? brPct + '%' : 'Auto'}</span> · <b>Temp:</b> <span style="color:${tempC >= 38 ? 'var(--err)' : 'var(--ok)'};font-weight:700;">${tempC.toFixed(1)} °C</span></div>
+          `;
+        }
+
+        // Invia il report diagnostico (inclusa la luminosità % dello smartphone!) al terminale del PC
+        if (bridgeActive) {
+          sendBridgeSilent({
+            cmd: 'phoneStatus',
+            battery: b.level,
+            plugged: !!b.plugged,
+            tempC: tempC.toFixed(1),
+            brightnessPct: brPct,
+            state: isSaver ? 'Screensaver (1%)' : (isDimmed ? 'Dimmed (2%)' : (pcIsLocked ? 'Visibile (PC Bloccato <20m)' : 'Attivo'))
+          });
         }
       } catch (_) {}
     }
@@ -2421,6 +2493,8 @@
       lbl.textContent = bridgeActive ? `⚡ Bridge: ${bridgeHost}` : 'Bridge PS1: Attesa';
       if (!bridgeActive) {
         resetMediaCardToIdle();
+      } else {
+        setTimeout(updateBattery, 500);
       }
       const st = document.getElementById('bridgeModalStatus');
       if (st) {
@@ -2583,6 +2657,33 @@
     };
 
     function renderTelemetry(d) {
+      // Gestione stato PC Bloccato (Win+L):
+      // - Appena blocchi il PC, porta la vista sulla Pagina 5 (OPTA & Antigravity) e mantiene acceso lo schermo per 20 minuti
+      // - Dopo 20 minuti checkIdleState() attiva lo Screensaver e spegne fisicamente lo schermo
+      // - Appena sblocchi il PC, riaccende automaticamente lo schermo!
+      if (d.pcLocked !== undefined) {
+        if (d.pcLocked && !pcIsLocked) {
+          pcIsLocked = true;
+          pcLockedSince = Date.now();
+          wakePanel();
+          if (currentPage !== 4) goPage(4, true, true);
+          flashTitle('🔒 PC Bloccato · Monitor OPTA & Antigravity attivo (20 min)');
+        } else if (!d.pcLocked && pcIsLocked) {
+          pcIsLocked = false;
+          pcLockedSince = 0;
+          wakePanel();
+          flashTitle('🔓 PC Sbloccato');
+        }
+      }
+
+      // Se lo Screensaver OLED è attivo, aggiorna solo OPTA/Antigravity (se < 20 min) e salta le ricostruzioni DOM inutili!
+      if (isSaver) {
+        if (d.opta && (!pcIsLocked || Date.now() - pcLockedSince < 20 * 60000)) {
+          renderOptaMonitor(d.opta);
+        }
+        return;
+      }
+
       // CPU / RAM / GPU
       const cpu = Math.round(d.cpu || 0);
       const ramPct = Math.round(d.ramPct || 0);

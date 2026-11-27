@@ -1,6 +1,6 @@
 ﻿<#
 .SYNOPSIS
-    PC-Companion Bridge (v1.6.0) - Script PowerShell user-space per Pixel 6a
+    PC-Companion Bridge (v1.6.1) - Script PowerShell user-space per Pixel 6a
     Comunica bidirezionalmente via Bluetooth RFCOMM nativo (Winsock AF_BTH)
     Include:
       - Auto-terminazione istanze precedenti dello script
@@ -8,11 +8,12 @@
       - Doppio Monitor rapido: Interno (WMI) + Esterno Dell S3422DW (DDC/CI VCP 0x10 con filtro GetMonitorInfo)
       - Integrazione Live OPTA Master Hub (GET http://192.168.1.10/status) con filtro Slave in test e rilevamento errori/allarmi
       - Monitoraggio Live Antigravity (rileva pulsante blu Submit/Proceed/Run e fine turno da transcript.jsonl con auto-chiusura)
+      - Rilevamento sessione PC Bloccata (LogonUI / Win+L) e log telemetria/luminosità dello schermo Pixel 6a
 #>
 
 $ErrorActionPreference = 'SilentlyContinue'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-$Host.UI.RawUI.WindowTitle = "PC-Companion Bridge v1.6.0 (Bluetooth RFCOMM + OPTA & Antigravity Monitor)"
+$Host.UI.RawUI.WindowTitle = "PC-Companion Bridge v1.6.1 (Bluetooth RFCOMM + OPTA & Antigravity Monitor)"
 
 # 0. Termina automaticamente eventuali vecchie istanze di PC-Companion-Bridge.ps1 rimaste in background
 Get-CimInstance Win32_Process -Filter "Name = 'powershell.exe'" | Where-Object {
@@ -23,7 +24,7 @@ Get-CimInstance Win32_Process -Filter "Name = 'powershell.exe'" | Where-Object {
 }
 
 Write-Host "================================================================" -ForegroundColor Cyan
-Write-Host "   PC-COMPANION BRIDGE v1.6.0 - Media, Monitor, OPTA & AGY      " -ForegroundColor Cyan
+Write-Host "   PC-COMPANION BRIDGE v1.6.1 - Media, Monitor, OPTA & AGY      " -ForegroundColor Cyan
 Write-Host "   Connessione diretta Bluetooth RFCOMM (Zero ADB / Zero Admin) " -ForegroundColor Gray
 Write-Host "================================================================" -ForegroundColor Cyan
 Write-Host ""
@@ -859,6 +860,9 @@ function Handle-PhoneCommand([string]$jsonLine) {
                     Write-Host "     -> Banner Antigravity chiuso manualmente ($($script:dismissedAgKey))" -ForegroundColor DarkGray
                 }
             }
+            'phoneStatus' {
+                Write-Host ("  [PIXEL 6a] Batteria: {0}% ({1}) | Temp: {2}°C | Luminosità schermo: {3}% | Stato: {4}" -f $cmdObj.battery, $(if ($cmdObj.plugged) { 'In carica' } else { 'Batteria' }), $cmdObj.tempC, $cmdObj.brightnessPct, $cmdObj.state) -ForegroundColor Green
+            }
             'monitorOff' {
                 [PcCompanionNative]::TurnOffMonitors()
             }
@@ -1308,8 +1312,11 @@ function Build-TelemetryJson {
         @{ hwnd = $_.hwnd; title = $_.title; proc = $_.proc }
     })
 
+    $isPcLocked = ($null -ne (Get-Process -Name LogonUI -ErrorAction SilentlyContinue))
+
     $payload = @{
         host           = $env:COMPUTERNAME
+        pcLocked       = $isPcLocked
         cpu            = $script:cachedCpuLoad
         ramPct         = $script:cachedRamPct
         ramUsedGb      = $script:cachedRamUsedGb

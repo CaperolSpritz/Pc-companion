@@ -12,16 +12,21 @@ import android.hardware.SensorManager
 import android.os.BatteryManager
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.os.SystemClock
 import android.os.VibrationEffect
 import android.os.Vibrator
+import android.provider.Settings
 import android.util.Log
 import android.view.View
+import android.view.ViewGroup
 import android.view.WindowInsets
 import android.view.WindowInsetsController
 import android.view.WindowManager
 import android.webkit.ConsoleMessage
 import android.webkit.JavascriptInterface
+import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
@@ -37,9 +42,12 @@ class MainActivity : Activity(), SensorEventListener {
     private lateinit var btHid: BluetoothHidController
     private lateinit var rfcommServer: BluetoothRfcommServer
     private val sensors by lazy { getSystemService(Context.SENSOR_SERVICE) as SensorManager? }
+    private val mainHandler = Handler(Looper.getMainLooper())
     private var lastLux = -1f
     private var lastLuxAt = 0L
     private var near: Boolean? = null
+    @Volatile private var lastWebHeartbeat = SystemClock.elapsedRealtime()
+    private var isActivityResumed = false
 
     private val assetLoader by lazy {
         WebViewAssetLoader.Builder()
@@ -47,30 +55,67 @@ class MainActivity : Activity(), SensorEventListener {
             .build()
     }
 
+    // Watchdog Nativo Kotlin: se per > 25s il JS della WebView non invia heartbeat (es. freeze o crash renderer),
+    // abbassa subito la luminosità all'1% su sfondo nero e ricarica la WebView per impedire qualsiasi schermata bianca.
+    private val watchdogRunnable = object : Runnable {
+        override fun run() {
+            if (isActivityResumed) {
+                val elapsed = SystemClock.elapsedRealtime() - lastWebHeartbeat
+                if (elapsed > 25_000L) {
+                    Log.w("PCCompanionWatchdog", "WebView heartbeat assente da ${elapsed}ms: ripristino di sicurezza su sfondo nero!")
+                    lastWebHeartbeat = SystemClock.elapsedRealtime()
+                    try {
+                        val lp = window.attributes
+                        lp.screenBrightness = 0.01f
+                        window.attributes = lp
+                        web.setBackgroundColor(0xFF000000.toInt())
+                        web.loadUrl("https://$ASSET_HOST/assets/www/index.html")
+                    } catch (_: Exception) {}
+                }
+            }
+            mainHandler.postDelayed(this, 10_000L)
+        }
+    }
+
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        window.decorView.setBackgroundColor(0xFF000000.toInt())
 
         btHid = BluetoothHidController(this) {
             val status = btHid.statusJson()
-            web.evaluateJavascript("window.onBtState && window.onBtState(${JSONObject.quote(status)})", null)
+            if (::web.isInitialized) {
+                web.evaluateJavascript("window.onBtState && window.onBtState(${JSONObject.quote(status)})", null)
+            }
         }
 
         rfcommServer = BluetoothRfcommServer(
             context = this,
             hasPermissions = { btHid.hasPermissions() },
             onBridgeMessage = { line ->
-                web.evaluateJavascript("window.onPcBridgeData && window.onPcBridgeData(${JSONObject.quote(line)})", null)
+                if (::web.isInitialized) {
+                    web.evaluateJavascript("window.onPcBridgeData && window.onPcBridgeData(${JSONObject.quote(line)})", null)
+                }
             },
             onConnectionChanged = { connected, host ->
-                web.evaluateJavascript(
-                    "window.onPcBridgeStatus && window.onPcBridgeStatus($connected, ${JSONObject.quote(host)})",
-                    null
-                )
+                if (::web.isInitialized) {
+                    web.evaluateJavascript(
+                        "window.onPcBridgeStatus && window.onPcBridgeStatus($connected, ${JSONObject.quote(host)})",
+                        null
+                    )
+                }
             }
         )
 
+        setupWebView()
+        hideSystemUi()
+        mainHandler.postDelayed(watchdogRunnable, 12_000L)
+    }
+
+    @SuppressLint("SetJavaScriptEnabled")
+    private fun setupWebView() {
+        lastWebHeartbeat = SystemClock.elapsedRealtime()
         web = WebView(this)
         web.setBackgroundColor(0xFF000000.toInt())
         setContentView(web)
@@ -98,12 +143,26 @@ class MainActivity : Activity(), SensorEventListener {
                 if (r != null && url.path?.endsWith(".js") == true) r.mimeType = "text/javascript"
                 return r
             }
+
+            // Intercetta qualsiasi crash/kill del Renderer Process di Android WebView (evita la schermata bianca!)
+            override fun onRenderProcessGone(view: WebView?, detail: RenderProcessGoneDetail?): Boolean {
+                Log.e("PCCompanionWeb", "WebView RenderProcessGone rilevato! Ricreo subito WebView su sfondo nero.")
+                runOnUiThread {
+                    try {
+                        val lp = window.attributes
+                        lp.screenBrightness = 0.01f
+                        window.attributes = lp
+                        (view?.parent as? ViewGroup)?.removeView(view)
+                        view?.destroy()
+                    } catch (_: Exception) {}
+                    setupWebView()
+                }
+                return true
+            }
         }
         web.addJavascriptInterface(Bridge(), "Android")
         WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG)
-
         web.loadUrl("https://$ASSET_HOST/assets/www/index.html")
-        hideSystemUi()
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
@@ -129,7 +188,9 @@ class MainActivity : Activity(), SensorEventListener {
 
     override fun onResume() {
         super.onResume()
-        web.onResume()
+        isActivityResumed = true
+        lastWebHeartbeat = SystemClock.elapsedRealtime()
+        if (::web.isInitialized) web.onResume()
         hideSystemUi()
         btHid.start()
         rfcommServer.start()
@@ -142,12 +203,14 @@ class MainActivity : Activity(), SensorEventListener {
     }
 
     override fun onPause() {
+        isActivityResumed = false
         sensors?.unregisterListener(this)
-        web.onPause()
+        if (::web.isInitialized) web.onPause()
         super.onPause()
     }
 
     override fun onDestroy() {
+        mainHandler.removeCallbacks(watchdogRunnable)
         rfcommServer.stop()
         btHid.stop()
         super.onDestroy()
@@ -211,16 +274,39 @@ class MainActivity : Activity(), SensorEventListener {
         }
 
         @JavascriptInterface
+        fun heartbeat() {
+            lastWebHeartbeat = SystemClock.elapsedRealtime()
+        }
+
+        @JavascriptInterface
+        fun setKeepScreenOn(enabled: Boolean) {
+            runOnUiThread {
+                if (enabled) {
+                    window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                } else {
+                    window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                }
+            }
+        }
+
+        @JavascriptInterface
         fun battery(): String {
             val i = registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
             val level = i?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
             val scale = i?.getIntExtra(BatteryManager.EXTRA_SCALE, 100) ?: 100
             val pluggedType = i?.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0) ?: 0
             val temp = (i?.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, 0) ?: 0) / 10.0
+            val sysBrightRaw = try {
+                Settings.System.getInt(contentResolver, Settings.System.SCREEN_BRIGHTNESS)
+            } catch (_: Exception) {
+                128
+            }
+            val sysBrightPct = ((sysBrightRaw * 100f) / 255f).toInt().coerceIn(0, 100)
             return JSONObject()
                 .put("level", if (level >= 0) level * 100 / scale else -1)
                 .put("plugged", pluggedType != 0)
                 .put("temp", temp)
+                .put("brightnessPct", sysBrightPct)
                 .toString()
         }
 
