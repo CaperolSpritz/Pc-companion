@@ -1,19 +1,19 @@
 ﻿<#
 .SYNOPSIS
-    PC-Companion Bridge (v1.6.1) - Script PowerShell user-space per Pixel 6a
+    PC-Companion Bridge (v1.6.2) - Script PowerShell user-space per Pixel 6a
     Comunica bidirezionalmente via Bluetooth RFCOMM nativo (Winsock AF_BTH)
     Include:
       - Auto-terminazione istanze precedenti dello script
       - Replica completa del MediaMonitor di PhoneBox (Windows SMTC Playing + Paused, Timeline PosMs/DurMs, Seek e Thumbnail WebP/JPEG/PNG Base64 con cache)
       - Doppio Monitor rapido: Interno (WMI) + Esterno Dell S3422DW (DDC/CI VCP 0x10 con filtro GetMonitorInfo)
-      - Integrazione Live OPTA Master Hub (GET http://192.168.1.10/status) con filtro Slave in test e rilevamento errori/allarmi
+      - Integrazione Live OPTA Master Hub (GET http://192.168.1.10/status) con riconnessione Wi-Fi intelligente (solo su Docking Station con Wi-Fi disconnesso)
       - Monitoraggio Live Antigravity (rileva pulsante blu Submit/Proceed/Run e fine turno da transcript.jsonl con auto-chiusura)
       - Rilevamento sessione PC Bloccata (LogonUI / Win+L) e log telemetria/luminosità dello schermo Pixel 6a
 #>
 
 $ErrorActionPreference = 'SilentlyContinue'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-$Host.UI.RawUI.WindowTitle = "PC-Companion Bridge v1.6.1 (Bluetooth RFCOMM + OPTA & Antigravity Monitor)"
+$Host.UI.RawUI.WindowTitle = "PC-Companion Bridge v1.6.2 (Bluetooth RFCOMM + OPTA & Antigravity Monitor)"
 
 # 0. Termina automaticamente eventuali vecchie istanze di PC-Companion-Bridge.ps1 rimaste in background
 Get-CimInstance Win32_Process -Filter "Name = 'powershell.exe'" | Where-Object {
@@ -24,7 +24,7 @@ Get-CimInstance Win32_Process -Filter "Name = 'powershell.exe'" | Where-Object {
 }
 
 Write-Host "================================================================" -ForegroundColor Cyan
-Write-Host "   PC-COMPANION BRIDGE v1.6.1 - Media, Monitor, OPTA & AGY      " -ForegroundColor Cyan
+Write-Host "   PC-COMPANION BRIDGE v1.6.2 - Media, Monitor, OPTA & AGY      " -ForegroundColor Cyan
 Write-Host "   Connessione diretta Bluetooth RFCOMM (Zero ADB / Zero Admin) " -ForegroundColor Gray
 Write-Host "================================================================" -ForegroundColor Cyan
 Write-Host ""
@@ -1150,9 +1150,57 @@ $script:cachedOpta = @{
     slaves      = @()
 }
 
+function Test-ShouldAutoConnectOptaWifi {
+    try {
+        # 1. Verifica istantanea (<1ms) tramite .NET NetworkInterface:
+        #    - Il PC deve essere collegato via cavo LAN alla Docking Station (es. Lenovo USB Ethernet / findernet.net / 10.10.x.x)
+        #    - La scheda Wi-Fi (Wireless80211) deve risultare attualmente NON attiva (disconnessa da Windows per priorità LAN).
+        #    Se il portatile è scollegato dalla Docking Station (es. in sala riunioni) o è già connesso a un'altra Wi-Fi, ritorna subito $false!
+        $nics = [System.Net.NetworkInformation.NetworkInterface]::GetAllNetworkInterfaces()
+        $hasDockLan = $false
+        $wifiAlreadyConnected = $false
+
+        foreach ($nic in $nics) {
+            if ($nic.OperationalStatus -eq [System.Net.NetworkInformation.OperationalStatus]::Up) {
+                if ($nic.NetworkInterfaceType -eq [System.Net.NetworkInformation.NetworkInterfaceType]::Ethernet) {
+                    $ipProps = $nic.GetIPProperties()
+                    $dns = [string]$ipProps.DnsSuffix
+                    $desc = [string]$nic.Description
+                    if ($dns -match 'findernet' -or $desc -match 'Lenovo|Dock|USB Ethernet') {
+                        $hasDockLan = $true
+                    } else {
+                        foreach ($uni in $ipProps.UnicastAddresses) {
+                            if ($uni.Address.AddressFamily -eq [System.Net.Sockets.AddressFamily]::InterNetwork -and
+                                $uni.Address.IPAddressToString -match '^10\.10\.') {
+                                $hasDockLan = $true
+                                break
+                            }
+                        }
+                    }
+                } elseif ($nic.NetworkInterfaceType -eq [System.Net.NetworkInformation.NetworkInterfaceType]::Wireless80211) {
+                    $wifiAlreadyConnected = $true
+                }
+            }
+        }
+
+        if (-not $hasDockLan -or $wifiAlreadyConnected) {
+            return $false
+        }
+
+        # 2. Doppia verifica tramite netsh wlan: conferma che la scheda Wi-Fi sia effettivamente in stato "disconnessa"
+        $wlanInfo = (netsh wlan show interfaces) -join "`n"
+        if ($wlanInfo -notmatch '(?i)Stato\s*:\s*disconnessa|State\s*:\s*disconnected') {
+            return $false
+        }
+        return $true
+    } catch {
+        return $false
+    }
+}
+
 function Get-OptaMasterSnapshot {
     try {
-        # Pre-check TCP rapido (400 ms) per non bloccare mai il loop Bluetooth se 192.168.1.10 non è instradabile
+        # Pre-check TCP rapido (450 ms) per non bloccare mai il loop Bluetooth se 192.168.1.10 non è instradabile
         $tcp = New-Object System.Net.Sockets.TcpClient
         $ar = $tcp.BeginConnect("192.168.1.10", 80, $null, $null)
         $connected = $ar.AsyncWaitHandle.WaitOne(450, $false)
@@ -1243,18 +1291,16 @@ function Get-OptaMasterSnapshot {
         }
     } catch {
         $script:optaFailStreak++
-        # Quando il PC è collegato via cavo LAN alla Docking Station, Windows tende a scollegare da solo il Wi-Fi OPTA_BURN_IN:
-        # lo riconnettiamo automaticamente in background (max 1 tentativo ogni 25s)
+        # Riconnessione Wi-Fi intelligente: interviene SOLO se il PC è collegato via cavo LAN alla Docking Station
+        # E la scheda Wi-Fi risulta attualmente disconnessa (non forza mai la riconnessione se il portatile è scollegato
+        # dalla docking station o se è già connesso a una rete Wi-Fi in sala riunioni).
         $nowUtc = [DateTime]::UtcNow
         if (($nowUtc - $script:lastWifiReconnectAt).TotalSeconds -ge 25) {
             $script:lastWifiReconnectAt = $nowUtc
-            try {
-                $wlanInfo = (netsh wlan show interfaces) -join "`n"
-                if ($wlanInfo -notmatch 'OPTA_BURN_IN') {
-                    Write-Host "  [OPTA-WIFI] Scheda Wi-Fi scollegata da OPTA_BURN_IN: riconnessione automatica in corso..." -ForegroundColor Yellow
-                    $null = netsh wlan connect name="OPTA_BURN_IN"
-                }
-            } catch {}
+            if (Test-ShouldAutoConnectOptaWifi) {
+                Write-Host "  [OPTA-WIFI] PC su Docking Station LAN con Wi-Fi disconnessa: riconnessione automatica a OPTA_BURN_IN..." -ForegroundColor Yellow
+                $null = netsh wlan connect name="OPTA_BURN_IN"
+            }
         }
 
         # Se ha fallito solo per 1-2 cicli transitori e avevamo già dati validi, mantiene l'ultimo snapshot senza sfarfallare
